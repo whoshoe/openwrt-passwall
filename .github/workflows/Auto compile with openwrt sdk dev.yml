@@ -2,7 +2,7 @@
 # Copyright (c) 2022-2023 SMALLPROGRAM <https://github.com/smallprogram>
 # Description: Auto compile
 #
-name: "Auto compile with openwrt sdk"
+name: "Auto compile with openwrt sdk - testing"
 on:
   repository_dispatch:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
         default: 'false'
   push:
     branches:
-      - 'main'
+      - 'master'
     paths:
       - 'luci-app-passwall/Makefile'
 env:
@@ -52,7 +52,6 @@ jobs:
           echo "has_update: ${has_update}"
 
       - name: Prepare release
-        if: steps.check_version.outputs.has_update == 'true'
         run: |
           echo "## :mega:Update content" >> release.txt
           echo "![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)" >> release.txt
@@ -61,7 +60,6 @@ jobs:
           touch release.txt
 
       - name: Generate new tag & release
-        if: steps.check_version.outputs.has_update == 'true'
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,16 +71,11 @@ jobs:
   job_build_passwall:
     name: Build passwall [Luci ${{ matrix.luci_ver }}]
     needs: job_check
-    if: needs.job_check.outputs.has_update == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - sdk_ver: 21.02
-            luci_ver: 19.07
-            sdk_url: https://downloads.openwrt.org/releases/21.02.5/targets/x86/64/openwrt-sdk-21.02.5-x86-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
-
           - sdk_ver: 23.05
             luci_ver: 23.05
             sdk_url: https://downloads.openwrt.org/releases/23.05.2/targets/x86/64/openwrt-sdk-23.05.2-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
@@ -182,7 +175,6 @@ jobs:
 
 
   job_auto_compile:
-    if: needs.job_check.outputs.has_update == 'true'
     needs: job_check
     runs-on: ubuntu-latest
     name: build (${{ matrix.platform }})
@@ -196,50 +188,14 @@ jobs:
           - platform: aarch64_generic
             url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/rockchip/armv8/openwrt-sdk-23.05.2-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
 
-          - platform: aarch64_cortex-a53
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/mvebu/cortexa53/openwrt-sdk-23.05.2-mvebu-cortexa53_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
           - platform: aarch64_cortex-a72
             url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/mvebu/cortexa72/openwrt-sdk-23.05.2-mvebu-cortexa72_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: arm_cortex-a7
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/mediatek/mt7629/openwrt-sdk-23.05.2-mediatek-mt7629_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
-
-          - platform: arm_cortex-a7_neon-vfpv4
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/sunxi/cortexa7/openwrt-sdk-23.05.2-sunxi-cortexa7_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
-
-          - platform: arm_cortex-a8_vfpv3
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/sunxi/cortexa8/openwrt-sdk-23.05.2-sunxi-cortexa8_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
-
-          - platform: arm_cortex-a9
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/bcm53xx/generic/openwrt-sdk-23.05.2-bcm53xx-generic_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
-
-          - platform: arm_cortex-a9_neon
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/zynq/generic/openwrt-sdk-23.05.2-zynq-generic_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
 
           - platform: arm_cortex-a9_vfpv3-d16
             url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/mvebu/cortexa9/openwrt-sdk-23.05.2-mvebu-cortexa9_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
 
-          - platform: arm_cortex-a15_neon-vfpv4
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/ipq806x/generic/openwrt-sdk-23.05.2-ipq806x-generic_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
-
-          - platform: mips_24kc
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/ath79/generic/openwrt-sdk-23.05.2-ath79-generic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: mips_4kec
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/realtek/rtl838x/openwrt-sdk-23.05.2-realtek-rtl838x_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: mips_mips32
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/bcm63xx/generic/openwrt-sdk-23.05.2-bcm63xx-generic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
           - platform: mipsel_24kc
             url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/ramips/rt288x/openwrt-sdk-23.05.2-ramips-rt288x_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: mipsel_74kc
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/ramips/rt3883/openwrt-sdk-23.05.2-ramips-rt3883_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: mipsel_mips32
-            url_sdk: https://downloads.openwrt.org/releases/23.05.2/targets/bcm47xx/generic/openwrt-sdk-23.05.2-bcm47xx-generic_gcc-12.3.0_musl.Linux-x86_64.tar.xz
 
     steps:
       - name: Initialization ${{ matrix.platform }} compile environment
