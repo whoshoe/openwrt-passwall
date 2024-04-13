@@ -185,18 +185,6 @@ jobs:
           - platform: x86_64
             url_sdk: https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-sdk-23.05.3-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
 
-          - platform: aarch64_generic
-            url_sdk: https://downloads.openwrt.org/releases/23.05.3/targets/rockchip/armv8/openwrt-sdk-23.05.3-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: aarch64_cortex-a72
-            url_sdk: https://downloads.openwrt.org/releases/23.05.3/targets/mvebu/cortexa72/openwrt-sdk-23.05.3-mvebu-cortexa72_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
-          - platform: arm_cortex-a9_vfpv3-d16
-            url_sdk: https://downloads.openwrt.org/releases/23.05.3/targets/mvebu/cortexa9/openwrt-sdk-23.05.3-mvebu-cortexa9_gcc-12.3.0_musl_eabi.Linux-x86_64.tar.xz
-
-          - platform: mipsel_24kc
-            url_sdk: https://downloads.openwrt.org/releases/23.05.3/targets/ramips/rt288x/openwrt-sdk-23.05.3-ramips-rt288x_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-
     steps:
       - name: Initialization ${{ matrix.platform }} compile environment
         run: |
