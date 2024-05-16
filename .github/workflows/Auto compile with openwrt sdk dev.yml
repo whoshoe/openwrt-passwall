@@ -14,8 +14,6 @@ on:
   push:
     branches:
       - 'master'
-    paths:
-      - 'luci-app-passwall/Makefile'
 env:
   TZ: Asia/Shanghai
   passwall: ${{ github.repository }}
