@@ -181,9 +181,9 @@ jobs:
           )
           echo "DEBUG: Specified packages to list: ${SPECIFIED_PACKAGES[*]}"
 
-          # --- 3. Read Manifest and Filter Package List ---
-          PACKAGE_LINES_ARRAY=() # Array to store individual package info lines
-          MANIFEST_STATUS_MESSAGE="N/A" # Fallback message
+          # --- 3. Read Manifest and Prepare Package Table Rows ---
+          TABLE_ROWS_ARRAY=() 
+          MANIFEST_STATUS_MESSAGE="N/A" 
 
           if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then
             MANIFEST_FILE=$(find "$BUILD_OUTPUT_DIR" -maxdepth 1 -name "*.manifest" -print -quit 2>/dev/null)
@@ -192,62 +192,58 @@ jobs:
               RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE" || echo "ERROR_CAT_MANIFEST_FAILED")
 
               if [[ "$RAW_PACKAGE_LIST" != "ERROR_CAT_MANIFEST_FAILED" ]] && [[ -n "$RAW_PACKAGE_LIST" ]]; then
-                PACKAGES_FOUND_COUNT=0
+                PACKAGES_PROCESSED_FOR_TABLE=0
                 for PKG_NAME in "${SPECIFIED_PACKAGES[@]}"; do
                   PKG_INFO_LINE_RAW=$(echo "$RAW_PACKAGE_LIST" | grep -E "^${PKG_NAME} - " | head -n 1 || true)
                   if [ -n "$PKG_INFO_LINE_RAW" ]; then
-                    # Add the line from grep, stripping its own trailing newline for a clean array element
-                    PACKAGE_LINES_ARRAY+=("$(echo -n "$PKG_INFO_LINE_RAW")")
-                    PACKAGES_FOUND_COUNT=$((PACKAGES_FOUND_COUNT + 1))
+                    VERSION_PART=$(echo "$PKG_INFO_LINE_RAW" | sed -E "s/^${PKG_NAME} - //")
+                    TABLE_ROWS_ARRAY+=("| :package: ${PKG_NAME} | ${VERSION_PART} |")
+                    PACKAGES_PROCESSED_FOR_TABLE=$((PACKAGES_PROCESSED_FOR_TABLE + 1))
                   else
                     echo "::warning::Package '${PKG_NAME}' not found in manifest '$MANIFEST_FILE'."
-                    PACKAGE_LINES_ARRAY+=("${PKG_NAME} - (not found in manifest)")
+                    TABLE_ROWS_ARRAY+=("| :package: ${PKG_NAME} | (not found in manifest) |")
                   fi
                 done
-
-                if [ "${#PACKAGE_LINES_ARRAY[@]}" -gt 0 ]; then # If array has any entries (found or "not found")
-                  MANIFEST_STATUS_MESSAGE="List below." 
-                elif [ "$PACKAGES_FOUND_COUNT" -eq 0 ] && [ ${#SPECIFIED_PACKAGES[@]} -gt 0 ]; then # No packages found from a non-empty spec list
-                  MANIFEST_STATUS_MESSAGE="None of the specified packages were found in the manifest."
-                elif [ ${#SPECIFIED_PACKAGES[@]} -eq 0 ]; then # No packages were specified to filter
-                  MANIFEST_STATUS_MESSAGE="N/A (No packages were specified to filter for)."
-                else
-                  MANIFEST_STATUS_MESSAGE="N/A - Error processing package list or no packages found." # Generic fallback
+                
+                if [ "${#TABLE_ROWS_ARRAY[@]}" -gt 0 ]; then
+                  MANIFEST_STATUS_MESSAGE="Table below." 
+                elif [ ${#SPECIFIED_PACKAGES[@]} -gt 0 ]; then 
+                  MANIFEST_STATUS_MESSAGE="None of the specified packages were found in the manifest to create a table."
+                else 
+                  MANIFEST_STATUS_MESSAGE="N/A (No packages were specified to build a table for)."
                 fi
+
               elif [[ "$RAW_PACKAGE_LIST" == "ERROR_CAT_MANIFEST_FAILED" ]]; then
                 MANIFEST_STATUS_MESSAGE="Error reading manifest file."
-              else # Manifest was empty
+              else 
                 MANIFEST_STATUS_MESSAGE="N/A - Manifest file was empty."
               fi
-            else # Manifest file not found (but dir existed)
+            else 
               MANIFEST_STATUS_MESSAGE="N/A - Manifest file not found."
             fi
-          else # Build output dir not found or empty
+          else 
             MANIFEST_STATUS_MESSAGE="N/A - Build output directory not found."
           fi
 
-          # --- 4. Construct Final Package List String (multi-line) ---
-          FINAL_PACKAGE_LIST_STRING=""
-          if [ "${#PACKAGE_LINES_ARRAY[@]}" -gt 0 ]; then
-            # Join array elements with a newline character
-            FINAL_PACKAGE_LIST_STRING=$(IFS=$'\n'; echo "${PACKAGE_LINES_ARRAY[*]}")
+          # --- 4. Construct Final Package Table String (multi-line Markdown) ---
+          FINAL_PACKAGE_TABLE_STRING=""
+          if [ "${#TABLE_ROWS_ARRAY[@]}" -gt 0 ]; then
+            FINAL_PACKAGE_TABLE_STRING+="| Package Name | Version |\n"
+            FINAL_PACKAGE_TABLE_STRING+="|---|---|\n"
+            FINAL_PACKAGE_TABLE_STRING+=$(IFS=$'\n'; echo "${TABLE_ROWS_ARRAY[*]}")
           else
-            # Use the status message if array is empty (e.g. "None found" or "N/A")
-            FINAL_PACKAGE_LIST_STRING="$MANIFEST_STATUS_MESSAGE"
+            FINAL_PACKAGE_TABLE_STRING="$MANIFEST_STATUS_MESSAGE"
           fi
-          echo "DEBUG: FINAL_PACKAGE_LIST_STRING (first 500 chars):"
-          printf "%.500s\n" "$FINAL_PACKAGE_LIST_STRING"
+          echo "DEBUG: FINAL_PACKAGE_TABLE_STRING (first 500 chars):"
+          printf "%.500s\n" "$FINAL_PACKAGE_TABLE_STRING"
 
           # --- 5. Construct Release Body Incrementally ---
           RELEASE_BODY=""
           RELEASE_BODY+=$(printf "OpenWrt image built on %s.\n" "$BUILD_DATE_STRING")
-          RELEASE_BODY+=$(printf "Profile: generic (x86/64)\n")
           RELEASE_BODY+=$(printf "ImageBuilder Version: SDK for OpenWrt %s\n" "$OPENWRT_SDK_VERSION")
-          RELEASE_BODY+=$(printf "Custom IPKs included from xiaorouji/openwrt-passwall (latest) and all IPKs from passwall_packages_ipk_x86_64.zip.\n")
-          RELEASE_BODY+=$(printf "Kernel Partition Size: 32MB\n")
-          RELEASE_BODY+=$(printf "RootFS Partition Size: 256MB\n\n")
           RELEASE_BODY+=$(printf "**Specified Packages included in this build (from manifest):**\n")
-          RELEASE_BODY+=$(printf -- '```\n%s\n```\n' "$FINAL_PACKAGE_LIST_STRING")
+          RELEASE_BODY+=$(printf "%s\n" "$FINAL_PACKAGE_TABLE_STRING") # Append the table or status message
+
 
           echo "DEBUG: Constructed RELEASE_BODY (first 500 chars):"
           printf "%.500s\n" "$RELEASE_BODY"
@@ -256,25 +252,19 @@ jobs:
           echo "DEBUG: Setting GITHUB_OUTPUT release_body..."
           DELIMITER="ghadelimiter_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 10)"
           echo "release_body<<${DELIMITER}" >> "$GITHUB_OUTPUT"
-          printf "%s" "$RELEASE_BODY" >> "$GITHUB_OUTPUT" # Print body as-is. If it ends with \n, it's included.
-          echo >> "$GITHUB_OUTPUT" # Ensure a newline exists before the delimiter, making it on its own line.
+          printf "%s" "$RELEASE_BODY" >> "$GITHUB_OUTPUT" 
+          echo >> "$GITHUB_OUTPUT" 
           echo "${DELIMITER}" >> "$GITHUB_OUTPUT"
 
-          # Check the exit status of the block that wrote to GITHUB_OUTPUT
-          # The last command in the block is the echo of the delimiter.
-          # The critical part is `printf "%s" "$RELEASE_BODY" >> "$GITHUB_OUTPUT"`
-          # If that printf fails, set -e would catch it. This explicit check is mostly for assurance.
           if [ $? -ne 0 ]; then 
-            echo "::error::Potentially failed to write RELEASE_BODY to GITHUB_OUTPUT (check previous commands)."
-            # Note: $? here reflects the status of the 'echo "${DELIMITER}" >> "$GITHUB_OUTPUT"'
-            # To check printf specifically, would need to isolate it. But set -e should handle it.
+            echo "::error::Potentially failed to write RELEASE_BODY to GITHUB_OUTPUT."
           fi
           echo "DEBUG: Finished Generate Release Notes step successfully."
 
       - name: Create Release Tag
         id: create_tag
         run: |
-          RELEASE_TAG="openwrt-image-$(date +'%Y-%m-%d-%H%M%S')"
+          RELEASE_TAG="$(date +'%Y-%m-%d-%H%M%S')"
           echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_OUTPUT
           echo "Generated release tag: ${RELEASE_TAG}"
 
@@ -284,7 +274,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.create_tag.outputs.RELEASE_TAG }}
-          name: OpenWrt Build ${{ steps.create_tag.outputs.RELEASE_TAG }}
+          name: ${{ steps.create_tag.outputs.RELEASE_TAG }}
           body: ${{ steps.generate_release_notes.outputs.release_body }}
           draft: false
           prerelease: false
