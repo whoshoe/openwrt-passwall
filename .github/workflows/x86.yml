@@ -2,15 +2,12 @@ name: Build OpenWrt x86 Image with Selected Packages
 
 on:
   workflow_dispatch: # Allows manual triggering from the Actions tab
-  # push:
-  #   branches:
-  #     - main # Or your preferred branch
 
 jobs:
   build_openwrt_image:
     runs-on: ubuntu-latest
     outputs:
-      release_tag: ${{ steps.create_tag.outputs.RELEASE_TAG }} # Output the release tag for the cleanup job
+      release_tag: ${{ steps.create_tag.outputs.RELEASE_TAG }} 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -99,18 +96,15 @@ jobs:
           mkdir -p "$TEMP_UNZIP_DIR"
           unzip -o "${TEMP_IPK_DIR}/passwall_packages.zip" -d "$TEMP_UNZIP_DIR"
 
-          # Copy directly downloaded IPKs
           cp "${TEMP_IPK_DIR}/luci-app-passwall.ipk" "$PACKAGE_DIR/"
           cp "${TEMP_IPK_DIR}/luci-i18n-passwall-zh-cn.ipk" "$PACKAGE_DIR/"
           
-          # Copy all .ipk files from the unzipped passwall_packages folder
           echo "Copying all .ipk files from Passwall packages zip..."
           find "$TEMP_UNZIP_DIR" -name "*.ipk" -exec cp -v {} "$PACKAGE_DIR/" \;
           
           echo "Contents of $PACKAGE_DIR:"
           ls -l "$PACKAGE_DIR"
 
-          # Verify that the directly downloaded IPKs are present
           DIRECT_DOWNLOAD_IPKS=("luci-app-passwall.ipk" "luci-i18n-passwall-zh-cn.ipk")
           for ipk_file in "${DIRECT_DOWNLOAD_IPKS[@]}"; do
             if [ ! -f "$PACKAGE_DIR/$ipk_file" ]; then
@@ -165,63 +159,49 @@ jobs:
       - name: Generate Release Notes
         id: generate_release_notes
         run: |
-          set -x # Enable command tracing for debugging
+          set -e # Exit immediately if a command exits with a non-zero status.
+          set -x # Enable command tracing for debugging.
 
           BUILD_DATE_STRING="$(date +'%Y-%m-%d %H:%M:%S UTC')"
-          # If the date command itself failed, the script would likely exit here if set -e is active
           echo "DEBUG: BUILD_DATE_STRING: $BUILD_DATE_STRING"
 
           OPENWRT_SDK_VERSION="${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }}"
           echo "DEBUG: OPENWRT_SDK_VERSION: $OPENWRT_SDK_VERSION"
 
           BUILD_OUTPUT_DIR="${{ steps.build_image.outputs.BUILD_OUTPUT_PATH }}"
-          echo "DEBUG: Attempted BUILD_OUTPUT_DIR: '$BUILD_OUTPUT_DIR'" # Quoted to see if it's empty
+          echo "DEBUG: Attempted BUILD_OUTPUT_DIR: '$BUILD_OUTPUT_DIR'"
 
-          if [ -z "$BUILD_OUTPUT_DIR" ]; then
-            echo "::error::BUILD_OUTPUT_PATH from build_image step was empty. This is unexpected if the build succeeded."
-            # This would lead to issues finding the manifest, but we'll let the script attempt it and report N/A.
+          PACKAGE_LIST_CONTENT="N/A - Manifest file not found or empty." # Default value
+          MANIFEST_FILE="" 
+
+          if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then
+            MANIFEST_FILE=$(find "$BUILD_OUTPUT_DIR" -maxdepth 1 -name "*.manifest" -print -quit 2>/dev/null)
+            if [ -n "$MANIFEST_FILE" ] && [ -f "$MANIFEST_FILE" ]; then
+              echo "DEBUG: Found manifest file: '$MANIFEST_FILE'"
+              RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE" || echo "Error reading manifest") 
+              if [ "$RAW_PACKAGE_LIST" != "Error reading manifest" ] && [ -n "$RAW_PACKAGE_LIST" ]; then
+                PACKAGE_LIST_CONTENT="$RAW_PACKAGE_LIST"
+              elif [ "$RAW_PACKAGE_LIST" == "Error reading manifest" ]; then
+                echo "::error::Failed to cat manifest file '$MANIFEST_FILE'"
+                PACKAGE_LIST_CONTENT="Error reading manifest file."
+              else
+                echo "DEBUG: Manifest file '$MANIFEST_FILE' was empty."
+                PACKAGE_LIST_CONTENT="N/A - Manifest file was empty."
+              fi
+            else
+              echo "::warning::Manifest file not found or is not a regular file in '$BUILD_OUTPUT_DIR'."
+            fi
+          else
+            echo "::warning::Build output directory '$BUILD_OUTPUT_DIR' not valid. Cannot search for manifest."
           fi
           
-          PACKAGE_LIST_CONTENT="N/A - Manifest file not found or empty."
-          MANIFEST_FILE="" # Initialize
-
-          # Check if BUILD_OUTPUT_DIR is non-empty and a directory before trying to find files in it
-          if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then
-            echo "DEBUG: Searching for manifest in '$BUILD_OUTPUT_DIR'"
-            # Use find: it's safer if no files match or if directory is empty.
-            # -maxdepth 1 to search only in the specified directory, not subdirectories.
-            # -print -quit to get only the first match (like head -n1).
-            MANIFEST_FILE=$(find "$BUILD_OUTPUT_DIR" -maxdepth 1 -name "*.manifest" -print -quit 2>/dev/null)
-            if [ -n "$MANIFEST_FILE" ]; then
-              echo "DEBUG: Found manifest file: '$MANIFEST_FILE'"
-            else
-              echo "DEBUG: No manifest file found in '$BUILD_OUTPUT_DIR' matching *.manifest"
-            fi
-          else
-            echo "::warning::Build output directory '$BUILD_OUTPUT_DIR' is not a valid directory or the path was empty. Cannot search for manifest file."
-          fi
-
-          # Check if MANIFEST_FILE was found and is a regular file
-          if [ -f "$MANIFEST_FILE" ]; then
-            echo "DEBUG: Reading package list from '$MANIFEST_FILE'"
-            RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE")
-            if [ -n "$RAW_PACKAGE_LIST" ]; then
-              PACKAGE_LIST_CONTENT="$RAW_PACKAGE_LIST"
-            else
-              echo "DEBUG: Manifest file '$MANIFEST_FILE' is empty."
-              PACKAGE_LIST_CONTENT="N/A - Manifest file was empty."
-            fi
-          else
-            # This warning is now more specific if MANIFEST_FILE couldn't be found/is not a file
-            if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then # Only warn if we expected to find it
-                 echo "::warning::Manifest file '$MANIFEST_FILE' (if any path was found) not found or is not a regular file. Package list will be N/A."
-            fi
-          fi
+          # !!! ---- IMPORTANT DEBUGGING STEP ---- !!!
+          # Uncomment the next line to test with a small placeholder for package list.
+          # If the workflow succeeds with this, the issue is related to the actual $PACKAGE_LIST_CONTENT (size or characters).
+          # PACKAGE_LIST_CONTENT="This is a short test package list."  # <<< --- UNCOMMENT THIS LINE FOR THE FIRST DEBUG RUN
+          # !!! ---- END OF DEBUGGING STEP ---- !!!
           
           echo "DEBUG: Populating RELEASE_BODY_TEMPLATE..."
-          echo "DEBUG: BUILD_DATE_STRING used in template: $BUILD_DATE_STRING"
-          echo "DEBUG: OPENWRT_SDK_VERSION used in template: $OPENWRT_SDK_VERSION"
-
           read -r -d '' RELEASE_BODY_TEMPLATE <<EOF_RB_TPL
           OpenWrt image built on $BUILD_DATE_STRING.
           Profile: generic (x86/64)
@@ -236,12 +216,28 @@ jobs:
           \`\`\`
           EOF_RB_TPL
           
+          echo "DEBUG: RELEASE_BODY_TEMPLATE has been populated."
+          
           echo "DEBUG: Setting GITHUB_OUTPUT release_body..."
-          EOF_MARKER="GH_ACTIONS_EOF_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 10)"
-          echo "release_body<<$EOF_MARKER" >> $GITHUB_OUTPUT
-          echo "$RELEASE_BODY_TEMPLATE" >> $GITHUB_OUTPUT
-          echo "$EOF_MARKER" >> $GITHUB_OUTPUT
-          echo "DEBUG: Finished Generate Release Notes step."
+          FIXED_EOF_MARKER="END_OF_ACTION_OUTPUT_VAL_XYZ123" # Made slightly more unique
+          
+          if [ -z "$GITHUB_OUTPUT" ]; then
+            echo "::error:: GITHUB_OUTPUT environment variable is not set."
+            exit 1 
+          fi
+          
+          {
+            echo "release_body<<$FIXED_EOF_MARKER"
+            printf "%s\n" "$RELEASE_BODY_TEMPLATE" 
+            echo "$FIXED_EOF_MARKER"
+          } >> "$GITHUB_OUTPUT"
+          
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to write RELEASE_BODY_TEMPLATE to GITHUB_OUTPUT."
+            exit 1 
+          fi
+          
+          echo "DEBUG: Finished Generate Release Notes step successfully."
 
       - name: Create Release Tag
         id: create_tag
@@ -266,7 +262,7 @@ jobs:
   cleanup_releases:
     runs-on: ubuntu-latest
     needs: build_openwrt_image
-    if: success() && github.event_name == 'workflow_dispatch' # This success() refers to build_openwrt_image job's success
+    if: success() && github.event_name == 'workflow_dispatch' 
     steps:
       - name: Clean up old releases (keep last 10)
         uses: actions/github-script@v7
