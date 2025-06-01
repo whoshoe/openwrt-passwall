@@ -243,7 +243,6 @@ jobs:
           RELEASE_BODY+="OpenWrt image built on $BUILD_DATE_STRING."$'\n'
           RELEASE_BODY+="Profile: generic (x86/64)"$'\n'
           RELEASE_BODY+="ImageBuilder Version: SDK for OpenWrt $OPENWRT_SDK_VERSION"$'\n'
-          RELEASE_BODY+="Custom IPKs included from xiaorouji/openwrt-passwall (latest) and all IPKs from passwall_packages_ipk_x86_64.zip."$'\n'
           RELEASE_BODY+="Kernel Partition Size: 32MB"$'\n'
           RELEASE_BODY+="RootFS Partition Size: 256MB"$'\n'$'\n' 
 
@@ -275,7 +274,7 @@ jobs:
       - name: Create Release Tag
         id: create_tag
         run: |
-          RELEASE_TAG="openwrt-image-$(date +'%Y-%m-%d-%H%M%S')"
+          RELEASE_TAG="$(date +'%Y.%m.%d.%H%M%S')"
           echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_OUTPUT
           echo "Generated release tag: ${RELEASE_TAG}"
 
@@ -285,7 +284,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.create_tag.outputs.RELEASE_TAG }}
-          name: OpenWrt Build ${{ steps.create_tag.outputs.RELEASE_TAG }}
+          name: ${{ steps.create_tag.outputs.RELEASE_TAG }}
           body: ${{ steps.generate_release_notes.outputs.release_body }}
           draft: false
           prerelease: false
