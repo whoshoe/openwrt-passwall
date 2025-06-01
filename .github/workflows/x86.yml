@@ -9,6 +9,9 @@ on:
 jobs:
   build_openwrt_image:
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.create_tag.outputs.RELEASE_TAG }} # Output the release tag for the cleanup job
+      build_successful: ${{ success() }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -26,7 +29,6 @@ jobs:
         run: |
           LATEST_STABLE_VERSION=$(curl -s https://downloads.openwrt.org/releases/ | grep -oP 'href="\K[0-9]+\.[0-9]+\.[0-9]+(?=/")' | sort -V | tail -n1)
           echo "Latest OpenWrt stable version: $LATEST_STABLE_VERSION"
-          # Ensure LATEST_STABLE_VERSION is output for later steps (e.g. release notes)
           echo "LATEST_STABLE_VERSION=$LATEST_STABLE_VERSION" >> $GITHUB_OUTPUT
           
           SDK_URL_PRIMARY="https://downloads.openwrt.org/releases/${LATEST_STABLE_VERSION}/targets/x86/64/openwrt-imagebuilder-${LATEST_STABLE_VERSION}-x86-64.Linux-x86_64.tar.zst"
@@ -35,7 +37,7 @@ jobs:
             echo "SDK_URL=$SDK_URL_PRIMARY" >> $GITHUB_OUTPUT
             echo "Using SDK URL: $SDK_URL_PRIMARY"
           else
-            echo "Primary SDK URL ($SDK_URL_PRIMARY) not found or uses a different naming. Attempting to find SDK file in directory listing..."
+            echo "Primary SDK URL ($SDK_URL_PRIMARY) not found. Attempting to find SDK file in directory listing..."
             SDK_DIR_URL="https://downloads.openwrt.org/releases/${LATEST_STABLE_VERSION}/targets/x86/64/"
             SDK_FILENAME=$(curl -s "$SDK_DIR_URL" | grep -oP 'openwrt-imagebuilder-'"${LATEST_STABLE_VERSION}"'-x86-64\.Linux-x86_64\.tar\.zst' | head -n1)
             if [ -z "$SDK_FILENAME" ]; then
@@ -68,22 +70,17 @@ jobs:
           RELEASE_INFO_URL="https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest"
           echo "Fetching latest Passwall release info from $RELEASE_INFO_URL"
           
-          # Updated jq patterns to handle potential prefixes like "luci-XX.YY_"
           LUCI_APP_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name | test(".*luci-app-passwall_.*\\.ipk$")) | .browser_download_url' | head -n1)
           LUCI_I18N_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name | test(".*luci-i18n-passwall-zh-cn_.*\\.ipk$")) | .browser_download_url' | head -n1)
           PACKAGES_ZIP_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name == "passwall_packages_ipk_x86_64.zip") | .browser_download_url' | head -n1)
 
-          if [ -z "$LUCI_APP_URL" ] || [ "$LUCI_APP_URL" == "null" ]; then echo "::error::Could not find luci-app-passwall IPK URL. Please check asset names in the latest Passwall release."; exit 1; fi
-          if [ -z "$LUCI_I18N_URL" ] || [ "$LUCI_I18N_URL" == "null" ]; then echo "::error::Could not find luci-i18n-passwall-zh-cn IPK URL. Please check asset names in the latest Passwall release."; exit 1; fi
+          if [ -z "$LUCI_APP_URL" ] || [ "$LUCI_APP_URL" == "null" ]; then echo "::error::Could not find luci-app-passwall IPK URL."; exit 1; fi
+          if [ -z "$LUCI_I18N_URL" ] || [ "$LUCI_I18N_URL" == "null" ]; then echo "::error::Could not find luci-i18n-passwall-zh-cn IPK URL."; exit 1; fi
           if [ -z "$PACKAGES_ZIP_URL" ] || [ "$PACKAGES_ZIP_URL" == "null" ]; then echo "::error::Could not find passwall_packages_ipk_x86_64.zip URL."; exit 1; fi
 
           echo "LUCI_APP_URL=$LUCI_APP_URL" >> $GITHUB_OUTPUT
           echo "LUCI_I18N_URL=$LUCI_I18N_URL" >> $GITHUB_OUTPUT
           echo "PACKAGES_ZIP_URL=$PACKAGES_ZIP_URL" >> $GITHUB_OUTPUT
-          
-          echo "Found Passwall luci-app URL: $LUCI_APP_URL"
-          echo "Found Passwall luci-i18n URL: $LUCI_I18N_URL"
-          echo "Found Passwall packages_zip URL: $PACKAGES_ZIP_URL"
 
       - name: Download and Place Passwall IPK Files
         run: |
@@ -103,63 +100,44 @@ jobs:
           mkdir -p "$TEMP_UNZIP_DIR"
           unzip -o "${TEMP_IPK_DIR}/passwall_packages.zip" -d "$TEMP_UNZIP_DIR"
 
+          # Copy directly downloaded IPKs
           cp "${TEMP_IPK_DIR}/luci-app-passwall.ipk" "$PACKAGE_DIR/"
           cp "${TEMP_IPK_DIR}/luci-i18n-passwall-zh-cn.ipk" "$PACKAGE_DIR/"
-
-          IPKS_FROM_ZIP=(
-            "chinadns-ng"
-            "dns2socks"
-            "microsocks"
-            "tcping"
-            "xray-core"
-            "xray-plugin"
-          )
-          for pkg_prefix in "${IPKS_FROM_ZIP[@]}"; do
-            # Copy found files, handle cases where no file matches the prefix gracefully
-            find "$TEMP_UNZIP_DIR" -name "${pkg_prefix}*.ipk" -exec cp {} "$PACKAGE_DIR/" \;
-          done
+          
+          # Copy all .ipk files from the unzipped passwall_packages folder
+          echo "Copying all .ipk files from Passwall packages zip..."
+          find "$TEMP_UNZIP_DIR" -name "*.ipk" -exec cp -v {} "$PACKAGE_DIR/" \;
           
           echo "Contents of $PACKAGE_DIR:"
           ls -l "$PACKAGE_DIR"
 
-          REQUIRED_IPK_BASENAMES=(
-            "luci-app-passwall.ipk"
-            "luci-i18n-passwall-zh-cn.ipk"
-          )
-          REQUIRED_IPK_PREFIXES=(
-            "chinadns-ng"
-            "dns2socks"
-            "microsocks"
-            "tcping"
-            "xray-core"
-            "xray-plugin"
-          )
-          for PKG_BASENAME in "${REQUIRED_IPK_BASENAMES[@]}"; do
-            if ! ls "$PACKAGE_DIR/${PKG_BASENAME}" 1> /dev/null 2>&1; then
-               echo "::error::Required IPK '${PKG_BASENAME}' not found in $PACKAGE_DIR."
-               exit 1
+          # Verify that the directly downloaded IPKs are present
+          DIRECT_DOWNLOAD_IPKS=("luci-app-passwall.ipk" "luci-i18n-passwall-zh-cn.ipk")
+          for ipk_file in "${DIRECT_DOWNLOAD_IPKS[@]}"; do
+            if [ ! -f "$PACKAGE_DIR/$ipk_file" ]; then
+              echo "::error::Directly downloaded IPK '$ipk_file' not found in $PACKAGE_DIR."
+              exit 1
             fi
           done
-          for PKG_PREFIX in "${REQUIRED_IPK_PREFIXES[@]}"; do
-            if ! ls "$PACKAGE_DIR/${PKG_PREFIX}"*.ipk 1> /dev/null 2>&1; then
-              echo "::error::Required IPK starting with '${PKG_PREFIX}' not found in $PACKAGE_DIR."
-              echo "Files found related to ${PKG_PREFIX} in ${TEMP_UNZIP_DIR}:"
-              find "$TEMP_UNZIP_DIR" -name "${PKG_PREFIX}*.ipk" -print
-              # exit 1 # Deciding whether to exit here or let the build fail later if a package is missing.
-                       # For now, we'll warn and let the OpenWrt build process be the final check.
-            fi
-          done
-          echo "IPK placement step complete."
+          
+          zip_ipk_count=$(find "$PACKAGE_DIR" -name "*.ipk" ! -name "luci-app-passwall.ipk" ! -name "luci-i18n-passwall-zh-cn.ipk" -type f | wc -l)
+          if [ "$zip_ipk_count" -eq 0 ]; then
+             echo "::warning::No additional IPKs seem to have been copied from the Passwall packages zip to $PACKAGE_DIR (or only the two direct downloads were present)."
+          else
+             echo "Copied $zip_ipk_count additional IPKs from the Passwall packages zip."
+          fi
+          
           rm -rf "$TEMP_IPK_DIR"
 
       - name: Modify ImageBuilder .config File
         working-directory: ${{ env.IMAGEBUILDER_PATH }}
         run: |
+          # This step fulfills the prompt's requirement.
+          # However, KERNEL_PARTSIZE/ROOTFS_PARTSIZE are more reliably set via 'make' arguments for ImageBuilder.
           CONFIG_FILE=".config"
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "# .config file created by GitHub Actions workflow" > "$CONFIG_FILE"
           fi
-
           echo "Modifying $CONFIG_FILE to set partition sizes..."
           if grep -q "CONFIG_TARGET_KERNEL_PARTSIZE=" "$CONFIG_FILE"; then
             sed -i 's/.*CONFIG_TARGET_KERNEL_PARTSIZE=.*/CONFIG_TARGET_KERNEL_PARTSIZE=32/' "$CONFIG_FILE"
@@ -171,8 +149,6 @@ jobs:
           else
             echo "CONFIG_TARGET_ROOTFS_PARTSIZE=256" >> "$CONFIG_FILE"
           fi
-          echo "Contents of $CONFIG_FILE after modification:"
-          cat "$CONFIG_FILE"
 
       - name: Build OpenWrt Image
         id: build_image
@@ -187,8 +163,45 @@ jobs:
 
           echo "BUILD_OUTPUT_PATH=${{ env.IMAGEBUILDER_PATH }}/bin/targets/x86/64" >> $GITHUB_OUTPUT
           echo "Image build complete. Output files are in ${{ env.IMAGEBUILDER_PATH }}/bin/targets/x86/64/"
-          echo "Listing contents of output directory:"
           ls -R "${{ env.IMAGEBUILDER_PATH }}/bin/"
+
+      - name: Generate Release Notes
+        id: generate_release_notes
+        run: |
+          BUILD_DATE_STRING="$(date +'%Y-%m-%d %H:%M:%S UTC')"
+          OPENWRT_SDK_VERSION="${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }}"
+          BUILD_OUTPUT_DIR="${{ steps.build_image.outputs.BUILD_OUTPUT_PATH }}"
+          
+          PACKAGE_LIST_CONTENT="N/A - Manifest file not found or empty."
+          MANIFEST_FILE=$(ls $BUILD_OUTPUT_DIR/*.manifest 2>/dev/null | head -n1)
+
+          if [ -f "$MANIFEST_FILE" ]; then
+            RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE")
+            if [ -n "$RAW_PACKAGE_LIST" ]; then
+              PACKAGE_LIST_CONTENT="$RAW_PACKAGE_LIST"
+            fi
+          else
+            echo "::warning::Manifest file not found in $BUILD_OUTPUT_DIR. Package list will be N/A."
+          fi
+          
+          # Using a unique heredoc delimiter
+          read -r -d '' RELEASE_BODY_TEMPLATE <<EOF_RB_TPL
+          OpenWrt image built on $BUILD_DATE_STRING.
+          Profile: generic (x86/64)
+          ImageBuilder Version: SDK for OpenWrt $OPENWRT_SDK_VERSION
+          Custom IPKs included from xiaorouji/openwrt-passwall (latest) and all IPKs from passwall_packages_ipk_x86_64.zip.
+          Kernel Partition Size: 32MB
+          RootFS Partition Size: 256MB
+
+          **Installed Packages and Versions (from manifest):**
+          \`\`\`
+          $PACKAGE_LIST_CONTENT
+          \`\`\`
+          EOF_RB_TPL
+          
+          echo "release_body<<END_OF_RELEASE_BODY_CONTENT" >> $GITHUB_OUTPUT
+          echo "$RELEASE_BODY_TEMPLATE" >> $GITHUB_OUTPUT
+          echo "END_OF_RELEASE_BODY_CONTENT" >> $GITHUB_OUTPUT
 
       - name: Create Release Tag
         id: create_tag
@@ -204,14 +217,59 @@ jobs:
         with:
           tag_name: ${{ steps.create_tag.outputs.RELEASE_TAG }}
           name: OpenWrt Build ${{ steps.create_tag.outputs.RELEASE_TAG }}
-          body: |
-            OpenWrt image built on $(date +'%Y-%m-%d %H:%M:%S UTC').
-            Profile: generic (x86/64)
-            ImageBuilder Version: SDK for OpenWrt ${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }}
-            Custom IPKs included from xiaorouji/openwrt-passwall (latest).
-            Kernel Partition Size: 32MB
-            RootFS Partition Size: 256MB
+          body: ${{ steps.generate_release_notes.outputs.release_body }}
           draft: false
           prerelease: false
           files: |
             ${{ steps.build_image.outputs.BUILD_OUTPUT_PATH }}/*
+
+  cleanup_releases:
+    runs-on: ubuntu-latest
+    needs: build_openwrt_image
+    if: success() && github.event_name == 'workflow_dispatch' # Run only if build succeeded and was manually dispatched (or adjust as needed)
+    steps:
+      - name: Clean up old releases (keep last 10)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const releasesToKeep = 10;
+
+            try {
+              core.info(`Fetching releases for ${owner}/${repo}...`);
+              const { data: allReleases } = await github.rest.repos.listReleases({ owner, repo, per_page: 100 });
+              
+              // Filter releases that seem to be from this workflow (optional, but good if other releases exist)
+              // This example assumes release names start with "OpenWrt Build openwrt-image-"
+              const workflowReleases = allReleases.filter(r => r.name && r.name.startsWith("OpenWrt Build openwrt-image-"));
+              core.info(`Found ${workflowReleases.length} releases matching workflow pattern out of ${allReleases.length} total releases.`);
+
+              // Sort workflow releases by creation date, newest first
+              const sortedReleases = workflowReleases.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+              if (sortedReleases.length > releasesToKeep) {
+                const releasesToDelete = sortedReleases.slice(releasesToKeep);
+                core.info(`Found ${releasesToDelete.length} old workflow releases to delete (keeping ${releasesToKeep}).`);
+                for (const release of releasesToDelete) {
+                  core.info(`Deleting release: "${release.name}" (ID: ${release.id}, Tag: ${release.tag_name}, Created: ${release.created_at})`);
+                  try {
+                    await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
+                    core.info(`  Successfully deleted release: "${release.name}"`);
+                    try {
+                      await github.rest.git.deleteRef({ owner, repo, ref: `tags/${release.tag_name}` });
+                      core.info(`  Successfully deleted tag: ${release.tag_name}`);
+                    } catch (tagError) {
+                      core.warning(`  Could not delete tag ${release.tag_name} (it might be already deleted or protected): ${tagError.message}`);
+                    }
+                  } catch (releaseError) {
+                    core.error(`  Failed to delete release "${release.name}": ${releaseError.message}`);
+                  }
+                }
+              } else {
+                core.info("No old workflow releases to delete (total workflow releases less than or equal to threshold).");
+              }
+            } catch (error) {
+              core.setFailed(`Failed to list or process releases: ${error.message}`);
+            }
