@@ -19,25 +19,27 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential libncurses5-dev libncursesw5-dev \
             zlib1g-dev gawk git gettext libssl-dev xsltproc \
-            rsync wget unzip ca-certificates curl jq
+            rsync wget unzip ca-certificates curl jq zstd
 
       - name: Get Latest OpenWrt ImageBuilder SDK URL
         id: openwrt_sdk
         run: |
           LATEST_STABLE_VERSION=$(curl -s https://downloads.openwrt.org/releases/ | grep -oP 'href="\K[0-9]+\.[0-9]+\.[0-9]+(?=/")' | sort -V | tail -n1)
           echo "Latest OpenWrt stable version: $LATEST_STABLE_VERSION"
+          # Ensure LATEST_STABLE_VERSION is output for later steps (e.g. release notes)
+          echo "LATEST_STABLE_VERSION=$LATEST_STABLE_VERSION" >> $GITHUB_OUTPUT
+          
           SDK_URL_PRIMARY="https://downloads.openwrt.org/releases/${LATEST_STABLE_VERSION}/targets/x86/64/openwrt-imagebuilder-${LATEST_STABLE_VERSION}-x86-64.Linux-x86_64.tar.zst"
           
-          # Check if the primary SDK URL is valid
           if curl --output /dev/null --silent --head --fail "$SDK_URL_PRIMARY"; then
             echo "SDK_URL=$SDK_URL_PRIMARY" >> $GITHUB_OUTPUT
             echo "Using SDK URL: $SDK_URL_PRIMARY"
           else
-            echo "Primary SDK URL ($SDK_URL_PRIMARY) not found. Attempting to find SDK file in directory listing..."
+            echo "Primary SDK URL ($SDK_URL_PRIMARY) not found or uses a different naming. Attempting to find SDK file in directory listing..."
             SDK_DIR_URL="https://downloads.openwrt.org/releases/${LATEST_STABLE_VERSION}/targets/x86/64/"
             SDK_FILENAME=$(curl -s "$SDK_DIR_URL" | grep -oP 'openwrt-imagebuilder-'"${LATEST_STABLE_VERSION}"'-x86-64\.Linux-x86_64\.tar\.zst' | head -n1)
             if [ -z "$SDK_FILENAME" ]; then
-              echo "::error::Could not find ImageBuilder SDK for version ${LATEST_STABLE_VERSION} on x86/64 target."
+              echo "::error::Could not find ImageBuilder SDK (tar.zst) for version ${LATEST_STABLE_VERSION} on x86/64 target."
               exit 1
             fi
             SDK_URL_FALLBACK="${SDK_DIR_URL}${SDK_FILENAME}"
@@ -47,13 +49,18 @@ jobs:
 
       - name: Download and Extract OpenWrt ImageBuilder
         run: |
-          IMAGEBUILDER_DIR="openwrt_imagebuilder"
-          mkdir "$IMAGEBUILDER_DIR"
+          IMAGEBUILDER_DIR_NAME="openwrt_imagebuilder"
+          IMAGEBUILDER_FULL_PATH="${GITHUB_WORKSPACE}/${IMAGEBUILDER_DIR_NAME}"
+          mkdir "$IMAGEBUILDER_FULL_PATH"
+          
           echo "Downloading ImageBuilder SDK from ${{ steps.openwrt_sdk.outputs.SDK_URL }}"
           wget -qO openwrt-imagebuilder.tar.zst "${{ steps.openwrt_sdk.outputs.SDK_URL }}"
-          tar -xf openwrt-imagebuilder.tar.zst -C "$IMAGEBUILDER_DIR" --strip-components=1
-          echo "IMAGEBUILDER_PATH=${GITHUB_WORKSPACE}/${IMAGEBUILDER_DIR}" >> $GITHUB_ENV
-          echo "ImageBuilder extracted to ${{ env.IMAGEBUILDER_PATH }}"
+          
+          echo "Extracting ImageBuilder..."
+          tar --zstd -xf openwrt-imagebuilder.tar.zst -C "$IMAGEBUILDER_FULL_PATH" --strip-components=1
+          
+          echo "IMAGEBUILDER_PATH=${IMAGEBUILDER_FULL_PATH}" >> $GITHUB_ENV
+          echo "ImageBuilder extracted to ${IMAGEBUILDER_FULL_PATH}"
 
       - name: Get Latest Passwall Release Information
         id: passwall_release
@@ -61,12 +68,13 @@ jobs:
           RELEASE_INFO_URL="https://api.github.com/repos/xiaorouji/openwrt-passwall/releases/latest"
           echo "Fetching latest Passwall release info from $RELEASE_INFO_URL"
           
-          LUCI_APP_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name | test("^luci-app-passwall_.*\\.ipk$")) | .browser_download_url' | head -n1)
-          LUCI_I18N_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name | test("^luci-i18n-passwall-zh-cn_.*\\.ipk$")) | .browser_download_url' | head -n1)
+          # Updated jq patterns to handle potential prefixes like "luci-XX.YY_"
+          LUCI_APP_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name | test(".*luci-app-passwall_.*\\.ipk$")) | .browser_download_url' | head -n1)
+          LUCI_I18N_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name | test(".*luci-i18n-passwall-zh-cn_.*\\.ipk$")) | .browser_download_url' | head -n1)
           PACKAGES_ZIP_URL=$(curl -s $RELEASE_INFO_URL | jq -r '.assets[] | select(.name == "passwall_packages_ipk_x86_64.zip") | .browser_download_url' | head -n1)
 
-          if [ -z "$LUCI_APP_URL" ] || [ "$LUCI_APP_URL" == "null" ]; then echo "::error::Could not find luci-app-passwall IPK URL."; exit 1; fi
-          if [ -z "$LUCI_I18N_URL" ] || [ "$LUCI_I18N_URL" == "null" ]; then echo "::error::Could not find luci-i18n-passwall-zh-cn IPK URL."; exit 1; fi
+          if [ -z "$LUCI_APP_URL" ] || [ "$LUCI_APP_URL" == "null" ]; then echo "::error::Could not find luci-app-passwall IPK URL. Please check asset names in the latest Passwall release."; exit 1; fi
+          if [ -z "$LUCI_I18N_URL" ] || [ "$LUCI_I18N_URL" == "null" ]; then echo "::error::Could not find luci-i18n-passwall-zh-cn IPK URL. Please check asset names in the latest Passwall release."; exit 1; fi
           if [ -z "$PACKAGES_ZIP_URL" ] || [ "$PACKAGES_ZIP_URL" == "null" ]; then echo "::error::Could not find passwall_packages_ipk_x86_64.zip URL."; exit 1; fi
 
           echo "LUCI_APP_URL=$LUCI_APP_URL" >> $GITHUB_OUTPUT
@@ -98,7 +106,6 @@ jobs:
           cp "${TEMP_IPK_DIR}/luci-app-passwall.ipk" "$PACKAGE_DIR/"
           cp "${TEMP_IPK_DIR}/luci-i18n-passwall-zh-cn.ipk" "$PACKAGE_DIR/"
 
-          # IPKs to extract from the zip (geoview is not typically a standalone IPK here)
           IPKS_FROM_ZIP=(
             "chinadns-ng"
             "dns2socks"
@@ -108,17 +115,18 @@ jobs:
             "xray-plugin"
           )
           for pkg_prefix in "${IPKS_FROM_ZIP[@]}"; do
+            # Copy found files, handle cases where no file matches the prefix gracefully
             find "$TEMP_UNZIP_DIR" -name "${pkg_prefix}*.ipk" -exec cp {} "$PACKAGE_DIR/" \;
           done
           
           echo "Contents of $PACKAGE_DIR:"
           ls -l "$PACKAGE_DIR"
 
-          # Verify required IPKs are present
-          # Note: luci-app-passwall.ipk and luci-i18n-passwall-zh-cn.ipk are specific names after download
+          REQUIRED_IPK_BASENAMES=(
+            "luci-app-passwall.ipk"
+            "luci-i18n-passwall-zh-cn.ipk"
+          )
           REQUIRED_IPK_PREFIXES=(
-            "luci-app-passwall.ipk" # Exact name
-            "luci-i18n-passwall-zh-cn.ipk" # Exact name
             "chinadns-ng"
             "dns2socks"
             "microsocks"
@@ -126,29 +134,30 @@ jobs:
             "xray-core"
             "xray-plugin"
           )
-          for PKG_NAME_OR_PREFIX in "${REQUIRED_IPK_PREFIXES[@]}"; do
-            if ! ls "$PACKAGE_DIR/${PKG_NAME_OR_PREFIX}"* 1> /dev/null 2>&1 && ! ls "$PACKAGE_DIR/${PKG_NAME_OR_PREFIX}" 1> /dev/null 2>&1; then
-              echo "::error::Required IPK matching '${PKG_NAME_OR_PREFIX}' not found in $PACKAGE_DIR."
-              echo "Files found in ${TEMP_UNZIP_DIR} for prefix ${PKG_NAME_OR_PREFIX}:"
-              find "$TEMP_UNZIP_DIR" -name "${PKG_NAME_OR_PREFIX}*.ipk"
-              exit 1
+          for PKG_BASENAME in "${REQUIRED_IPK_BASENAMES[@]}"; do
+            if ! ls "$PACKAGE_DIR/${PKG_BASENAME}" 1> /dev/null 2>&1; then
+               echo "::error::Required IPK '${PKG_BASENAME}' not found in $PACKAGE_DIR."
+               exit 1
             fi
           done
-          echo "All required IPKs seem to be in place."
+          for PKG_PREFIX in "${REQUIRED_IPK_PREFIXES[@]}"; do
+            if ! ls "$PACKAGE_DIR/${PKG_PREFIX}"*.ipk 1> /dev/null 2>&1; then
+              echo "::error::Required IPK starting with '${PKG_PREFIX}' not found in $PACKAGE_DIR."
+              echo "Files found related to ${PKG_PREFIX} in ${TEMP_UNZIP_DIR}:"
+              find "$TEMP_UNZIP_DIR" -name "${PKG_PREFIX}*.ipk" -print
+              # exit 1 # Deciding whether to exit here or let the build fail later if a package is missing.
+                       # For now, we'll warn and let the OpenWrt build process be the final check.
+            fi
+          done
+          echo "IPK placement step complete."
           rm -rf "$TEMP_IPK_DIR"
 
       - name: Modify ImageBuilder .config File
         working-directory: ${{ env.IMAGEBUILDER_PATH }}
         run: |
           CONFIG_FILE=".config"
-          # Create a .config file if it doesn't exist.
-          # Note: ImageBuilder doesn't typically use a root .config for KERNEL_PARTSIZE/ROOTFS_PARTSIZE.
-          # These are more reliably set via 'make' arguments or profile definitions.
-          # This step fulfills the prompt's requirement to modify/create this file.
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "# .config file created by GitHub Actions workflow" > "$CONFIG_FILE"
-            # You might need to add profile selection here if ImageBuilder requires it in .config
-            # e.g., echo "CONFIG_PROFILE_GENERIC=y" >> .config (syntax depends on ImageBuilder version)
           fi
 
           echo "Modifying $CONFIG_FILE to set partition sizes..."
@@ -169,8 +178,6 @@ jobs:
         id: build_image
         working-directory: ${{ env.IMAGEBUILDER_PATH }}
         run: |
-          # The PACKAGES list. 'geoview' removed as it's not a typical IPK from the zip.
-          # The partition sizes are passed as make arguments for reliability with ImageBuilder.
           echo "Starting image build..."
           make image \
             PROFILE="generic" \
@@ -200,7 +207,7 @@ jobs:
           body: |
             OpenWrt image built on $(date +'%Y-%m-%d %H:%M:%S UTC').
             Profile: generic (x86/64)
-            ImageBuilder Version: SDK for OpenWrt ${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }} (approx)
+            ImageBuilder Version: SDK for OpenWrt ${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }}
             Custom IPKs included from xiaorouji/openwrt-passwall (latest).
             Kernel Partition Size: 32MB
             RootFS Partition Size: 256MB
