@@ -163,45 +163,76 @@ jobs:
           set -x # Enable command tracing for debugging.
 
           BUILD_DATE_STRING="$(date +'%Y-%m-%d %H:%M:%S UTC')"
-          echo "DEBUG: BUILD_DATE_STRING: $BUILD_DATE_STRING"
-
           OPENWRT_SDK_VERSION="${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }}"
-          echo "DEBUG: OPENWRT_SDK_VERSION: $OPENWRT_SDK_VERSION"
-
           BUILD_OUTPUT_DIR="${{ steps.build_image.outputs.BUILD_OUTPUT_PATH }}"
+          
+          echo "DEBUG: BUILD_DATE_STRING: $BUILD_DATE_STRING"
+          echo "DEBUG: OPENWRT_SDK_VERSION: $OPENWRT_SDK_VERSION"
           echo "DEBUG: Attempted BUILD_OUTPUT_DIR: '$BUILD_OUTPUT_DIR'"
 
-          PACKAGE_LIST_CONTENT="N/A - Manifest file not found or empty." # Default value
+          # Define the list of packages specified in the 'make image' command
+          SPECIFIED_PACKAGES=(
+            "dnsmasq-full" "chinadns-ng" "dns2socks" "microsocks" "tcping"
+            "xray-core" "xray-plugin" "luci-app-passwall" "luci-i18n-passwall-zh-cn"
+            "kmod-nft-nat" "kmod-nft-socket" "kmod-nft-tproxy" "htop" "keepalived"
+            "luci" "luci-compat" "luci-i18n-base-zh-cn" "qemu-ga" "inotifywait"
+            "luci-app-keepalived"
+          )
+          echo "DEBUG: Specified packages to list: ${SPECIFIED_PACKAGES[*]}"
+
+          FILTERED_PACKAGE_LIST_CONTENT="N/A - Manifest file not processed or specified packages not found." # Default
           MANIFEST_FILE="" 
 
           if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then
             MANIFEST_FILE=$(find "$BUILD_OUTPUT_DIR" -maxdepth 1 -name "*.manifest" -print -quit 2>/dev/null)
             if [ -n "$MANIFEST_FILE" ] && [ -f "$MANIFEST_FILE" ]; then
               echo "DEBUG: Found manifest file: '$MANIFEST_FILE'"
-              RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE" || echo "Error reading manifest") 
+              RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE" || echo "Error reading manifest")
+              
               if [ "$RAW_PACKAGE_LIST" != "Error reading manifest" ] && [ -n "$RAW_PACKAGE_LIST" ]; then
-                PACKAGE_LIST_CONTENT="$RAW_PACKAGE_LIST"
+                TEMP_FILTERED_LIST=""
+                PACKAGES_FOUND_COUNT=0
+                for PKG_NAME in "${SPECIFIED_PACKAGES[@]}"; do
+                  PKG_INFO=$(echo "$RAW_PACKAGE_LIST" | grep -E "^${PKG_NAME} - " | head -n 1 || true)
+                  if [ -n "$PKG_INFO" ]; then
+                    TEMP_FILTERED_LIST="${TEMP_FILTERED_LIST}${PKG_INFO}\n"
+                    PACKAGES_FOUND_COUNT=$((PACKAGES_FOUND_COUNT + 1))
+                  else
+                    echo "::warning::Package '${PKG_NAME}' not found in manifest '$MANIFEST_FILE'."
+                    TEMP_FILTERED_LIST="${TEMP_FILTERED_LIST}${PKG_NAME} - (not found in manifest)\n" 
+                  fi
+                done
+                
+                if [ "$PACKAGES_FOUND_COUNT" -gt 0 ]; then
+                  FILTERED_PACKAGE_LIST_CONTENT=$(printf "%s" "$TEMP_FILTERED_LIST" | sed '$ { /^$/d; s/\n$// }' ) # Removes last \n if list is not empty
+                elif [ -n "$TEMP_FILTERED_LIST" ]; then 
+                  FILTERED_PACKAGE_LIST_CONTENT=$(printf "%s" "$TEMP_FILTERED_LIST" | sed '$ { /^$/d; s/\n$// }' )
+                else
+                  FILTERED_PACKAGE_LIST_CONTENT="None of the specified packages could be retrieved from the manifest."
+                fi
+
               elif [ "$RAW_PACKAGE_LIST" == "Error reading manifest" ]; then
                 echo "::error::Failed to cat manifest file '$MANIFEST_FILE'"
-                PACKAGE_LIST_CONTENT="Error reading manifest file."
+                FILTERED_PACKAGE_LIST_CONTENT="Error reading manifest file."
               else
                 echo "DEBUG: Manifest file '$MANIFEST_FILE' was empty."
-                PACKAGE_LIST_CONTENT="N/A - Manifest file was empty."
+                FILTERED_PACKAGE_LIST_CONTENT="N/A - Manifest file was empty."
               fi
             else
               echo "::warning::Manifest file not found or is not a regular file in '$BUILD_OUTPUT_DIR'."
+              FILTERED_PACKAGE_LIST_CONTENT="N/A - Manifest file not found."
             fi
           else
             echo "::warning::Build output directory '$BUILD_OUTPUT_DIR' not valid. Cannot search for manifest."
+            FILTERED_PACKAGE_LIST_CONTENT="N/A - Build output directory not found."
           fi
           
-          # !!! ---- IMPORTANT DEBUGGING STEP ---- !!!
-          # Uncomment the next line to test with a small placeholder for package list.
-          # If the workflow succeeds with this, the issue is related to the actual $PACKAGE_LIST_CONTENT (size or characters).
-          # PACKAGE_LIST_CONTENT="This is a short test package list."  # <<< --- UNCOMMENT THIS LINE FOR THE FIRST DEBUG RUN
-          # !!! ---- END OF DEBUGGING STEP ---- !!!
+          # For debugging - comment this out for production
+          # FILTERED_PACKAGE_LIST_CONTENT="This is a short test package list."
           
-          echo "DEBUG: Populating RELEASE_BODY_TEMPLATE..."
+          echo "DEBUG: Populating RELEASE_BODY_TEMPLATE with FILTERED_PACKAGE_LIST_CONTENT (first 500 chars):"
+          printf "%.500s\n" "$FILTERED_PACKAGE_LIST_CONTENT" 
+          
           read -r -d '' RELEASE_BODY_TEMPLATE <<EOF_RB_TPL
           OpenWrt image built on $BUILD_DATE_STRING.
           Profile: generic (x86/64)
@@ -210,16 +241,16 @@ jobs:
           Kernel Partition Size: 32MB
           RootFS Partition Size: 256MB
 
-          **Installed Packages and Versions (from manifest):**
+          **Specified Packages included in this build (from manifest):**
           \`\`\`
-          $PACKAGE_LIST_CONTENT
+          $FILTERED_PACKAGE_LIST_CONTENT
           \`\`\`
           EOF_RB_TPL
           
           echo "DEBUG: RELEASE_BODY_TEMPLATE has been populated."
           
           echo "DEBUG: Setting GITHUB_OUTPUT release_body..."
-          FIXED_EOF_MARKER="END_OF_ACTION_OUTPUT_VAL_XYZ123" # Made slightly more unique
+          FIXED_EOF_MARKER="END_OF_ACTION_OUTPUT_VAL_XYZ123"
           
           if [ -z "$GITHUB_OUTPUT" ]; then
             echo "::error:: GITHUB_OUTPUT environment variable is not set."
