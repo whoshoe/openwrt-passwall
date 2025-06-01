@@ -165,22 +165,63 @@ jobs:
       - name: Generate Release Notes
         id: generate_release_notes
         run: |
+          set -x # Enable command tracing for debugging
+
           BUILD_DATE_STRING="$(date +'%Y-%m-%d %H:%M:%S UTC')"
+          # If the date command itself failed, the script would likely exit here if set -e is active
+          echo "DEBUG: BUILD_DATE_STRING: $BUILD_DATE_STRING"
+
           OPENWRT_SDK_VERSION="${{ steps.openwrt_sdk.outputs.LATEST_STABLE_VERSION }}"
+          echo "DEBUG: OPENWRT_SDK_VERSION: $OPENWRT_SDK_VERSION"
+
           BUILD_OUTPUT_DIR="${{ steps.build_image.outputs.BUILD_OUTPUT_PATH }}"
+          echo "DEBUG: Attempted BUILD_OUTPUT_DIR: '$BUILD_OUTPUT_DIR'" # Quoted to see if it's empty
+
+          if [ -z "$BUILD_OUTPUT_DIR" ]; then
+            echo "::error::BUILD_OUTPUT_PATH from build_image step was empty. This is unexpected if the build succeeded."
+            # This would lead to issues finding the manifest, but we'll let the script attempt it and report N/A.
+          fi
           
           PACKAGE_LIST_CONTENT="N/A - Manifest file not found or empty."
-          MANIFEST_FILE=$(ls $BUILD_OUTPUT_DIR/*.manifest 2>/dev/null | head -n1)
+          MANIFEST_FILE="" # Initialize
 
+          # Check if BUILD_OUTPUT_DIR is non-empty and a directory before trying to find files in it
+          if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then
+            echo "DEBUG: Searching for manifest in '$BUILD_OUTPUT_DIR'"
+            # Use find: it's safer if no files match or if directory is empty.
+            # -maxdepth 1 to search only in the specified directory, not subdirectories.
+            # -print -quit to get only the first match (like head -n1).
+            MANIFEST_FILE=$(find "$BUILD_OUTPUT_DIR" -maxdepth 1 -name "*.manifest" -print -quit 2>/dev/null)
+            if [ -n "$MANIFEST_FILE" ]; then
+              echo "DEBUG: Found manifest file: '$MANIFEST_FILE'"
+            else
+              echo "DEBUG: No manifest file found in '$BUILD_OUTPUT_DIR' matching *.manifest"
+            fi
+          else
+            echo "::warning::Build output directory '$BUILD_OUTPUT_DIR' is not a valid directory or the path was empty. Cannot search for manifest file."
+          fi
+
+          # Check if MANIFEST_FILE was found and is a regular file
           if [ -f "$MANIFEST_FILE" ]; then
+            echo "DEBUG: Reading package list from '$MANIFEST_FILE'"
             RAW_PACKAGE_LIST=$(cat "$MANIFEST_FILE")
             if [ -n "$RAW_PACKAGE_LIST" ]; then
               PACKAGE_LIST_CONTENT="$RAW_PACKAGE_LIST"
+            else
+              echo "DEBUG: Manifest file '$MANIFEST_FILE' is empty."
+              PACKAGE_LIST_CONTENT="N/A - Manifest file was empty."
             fi
           else
-            echo "::warning::Manifest file not found in $BUILD_OUTPUT_DIR. Package list will be N/A."
+            # This warning is now more specific if MANIFEST_FILE couldn't be found/is not a file
+            if [ -n "$BUILD_OUTPUT_DIR" ] && [ -d "$BUILD_OUTPUT_DIR" ]; then # Only warn if we expected to find it
+                 echo "::warning::Manifest file '$MANIFEST_FILE' (if any path was found) not found or is not a regular file. Package list will be N/A."
+            fi
           fi
           
+          echo "DEBUG: Populating RELEASE_BODY_TEMPLATE..."
+          echo "DEBUG: BUILD_DATE_STRING used in template: $BUILD_DATE_STRING"
+          echo "DEBUG: OPENWRT_SDK_VERSION used in template: $OPENWRT_SDK_VERSION"
+
           read -r -d '' RELEASE_BODY_TEMPLATE <<EOF_RB_TPL
           OpenWrt image built on $BUILD_DATE_STRING.
           Profile: generic (x86/64)
@@ -195,9 +236,12 @@ jobs:
           \`\`\`
           EOF_RB_TPL
           
-          echo "release_body<<END_OF_RELEASE_BODY_CONTENT" >> $GITHUB_OUTPUT
+          echo "DEBUG: Setting GITHUB_OUTPUT release_body..."
+          EOF_MARKER="GH_ACTIONS_EOF_$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 10)"
+          echo "release_body<<$EOF_MARKER" >> $GITHUB_OUTPUT
           echo "$RELEASE_BODY_TEMPLATE" >> $GITHUB_OUTPUT
-          echo "END_OF_RELEASE_BODY_CONTENT" >> $GITHUB_OUTPUT
+          echo "$EOF_MARKER" >> $GITHUB_OUTPUT
+          echo "DEBUG: Finished Generate Release Notes step."
 
       - name: Create Release Tag
         id: create_tag
