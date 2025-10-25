@@ -68,8 +68,6 @@ jobs:
 
   job_build_passwall:
     name: Build passwall [Luci ${{ matrix.luci_ver }}]
-    needs: job_check
-    if: needs.job_check.outputs.has_update == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -177,8 +175,6 @@ jobs:
 
 
   job_auto_compile:
-    if: ${{ needs.job_check.outputs.has_update == 'true' && needs.job_check.outputs.prerelease == 'false' }}
-    needs: job_check
     runs-on: ubuntu-latest
     name: build (${{ matrix.platform }})
     strategy:
