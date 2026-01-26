@@ -166,10 +166,12 @@ m.uci:foreach(appname, "shunt_rules", function(e)
 			for k, v in pairs(balancers_table) do
 				o:value(v.id, v.remark)
 				o.group[#o.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
+				fakedns_tag:depends({ ["fakedns"] = true, [e[".name"]] = v.id })
 			end
 			for k, v in pairs(urltest_table) do
 				o:value(v.id, v.remark)
 				o.group[#o.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
+				fakedns_tag:depends({ ["fakedns"] = true, [e[".name"]] = v.id })
 			end
 			for k, v in pairs(iface_table) do
 				o:value(v.id, v.remark)
