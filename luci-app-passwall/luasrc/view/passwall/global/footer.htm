@@ -83,7 +83,7 @@ local api = self.api
 				var cbid = el.id.replace(/\.main$/, "");
 				var hidden_select = document.getElementById(cbid);
 				var node_select_value = hidden_select ? hidden_select.options[0].value : "";
-				if (!node_select_value || node_select_value.indexOf("_default") === 0 || node_select_value.indexOf("_direct") === 0 || node_select_value.indexOf("_blackhole") === 0) {
+				if (!node_select_value || node_select_value === "" || node_select_value.indexOf("tcp") === 0) {
 					continue;
 				}
 

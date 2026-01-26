@@ -112,11 +112,39 @@ o:value("", translate("Close"))
 o.group = {""}
 
 ---- UDP Node
-o = s:taboption("Main", ListValue, "udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
+o = s:taboption("Main", ListValue, "other_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
 o.template = appname .. "/cbi/nodes_listvalue"
 o:value("", translate("Close"))
 o:value("tcp", translate("Same as the tcp node"))
 o.group = {"",""}
+o:depends("_node_sel_other", "1")
+o.cfgvalue = function(self, section)
+	return m:get(section, "udp_node")
+end
+o.write = function(self, section, value)
+	return m:set(section, "udp_node", value)
+end
+
+o = s:taboption("Main", ListValue, "shunt_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
+o:value("", translate("Close"))
+o:value("tcp", translate("Same as the tcp node"))
+o:depends("_node_sel_shunt", "1")
+o.cfgvalue = function(self, section)
+	local udp = m:get(section, "udp_node")
+	if udp and udp ~= "tcp" then return "" end
+	return udp
+end
+o.write = function(self, section, value)
+	return m:set(section, "udp_node", value)
+end
+
+o = s:taboption("Main", DummyValue, "shunt_tips", "　")
+o.rawhtml = true
+o.cfgvalue = function(t, n)
+	return string.format('<font color=#FF8C00>%s</font>',
+	translate("To modify the shunt policy, click the Edit button."))
+end
+o:depends("_node_sel_shunt", "1")
 
 o = s:taboption("Main", Value, "tcp_node_socks_port", translate("TCP Node") .. " Socks " .. translate("Listen Port"))
 o.default = 1070
@@ -708,7 +736,7 @@ if has_singbox or has_xray then
 end
 
 local tcp = s.fields["tcp_node"]
-local udp = s.fields["udp_node"]
+local udp = s.fields["other_udp_node"]
 local socks = s2.fields["node"]
 for k, v in pairs(socks_list) do
 	tcp:value(v.id, v["remark"])
