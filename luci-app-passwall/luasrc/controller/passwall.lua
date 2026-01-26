@@ -430,7 +430,7 @@ function add_node()
 	if protocol == "shunt" then
 		uci:set(appname, uuid, "protocol", "_shunt")
 	else
-		uci:set(appname, uuid, "type", "Xray")
+		uci:set(appname, uuid, "type", "Socks")
 	end
 
 	if redirect == "1" then
