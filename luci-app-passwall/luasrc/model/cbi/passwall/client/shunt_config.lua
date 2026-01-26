@@ -251,4 +251,13 @@ o:value("hybrid")
 o:value("linear")
 o:depends({ ["type"] = "Xray" })
 
+o = s:option(DummyValue, "exportConfig")
+o.rawhtml = true
+function o.cfgvalue(self, section)
+	return string.format(
+		[[<input type="button" class="btn cbi-button cbi-button-apply" onclick="return window.open('%s', '_blank')" value="%s" />]],
+		api.url("gen_client_config") .. "?id=" .. arg[1],
+		translate("Export Config File"))
+end
+
 return m
