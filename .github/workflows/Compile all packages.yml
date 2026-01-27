@@ -439,7 +439,7 @@ jobs:
           makefile="feeds/passwall_packages/xray-core/Makefile"
           sed -i '/define Build\/Prepare/,/endef/d' "$makefile"
           sed -i '/define Build\/Configure/,/endef/d' "$makefile"
-          printf "\ndefine Build/Configure\n\t\$(call Build/Configure/Default)\n\t@echo '--- DEBUG START: Patching go.mod ---'\n\tfind \$(PKG_BUILD_DIR) -name go.mod -print -exec sed -i 's/go 1.25.*/go 1.24/g' {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -print -exec sed -i '/toolchain/d' {} \;\n\t@echo '--- DEBUG END: Checking go.mod content ---'\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec cat {} \;\nendef\n" >> "$makefile"
+          printf "\ndefine Build/Configure\n\t@echo '--- DEBUG: Patching go.mod BEFORE configure ---'\n\tfind \$(PKG_BUILD_DIR) -name go.mod -print -exec sed -i 's/go 1.25.*/go 1.24/g' {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -print -exec sed -i '/toolchain/d' {} \;\n\t@echo '--- DEBUG: Applying default configure ---'\n\t\$(call Build/Configure/Default)\nendef\n" >> "$makefile"
           echo "Dumping modified Makefile footer for verification:"
           tail -n 10 "$makefile"
           
