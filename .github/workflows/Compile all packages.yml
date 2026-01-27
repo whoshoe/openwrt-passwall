@@ -436,7 +436,9 @@ jobs:
           grep -q -- '--ci false \\' feeds/packages/lang/rust/Makefile || sed -i '/x\.py \\/a \        --ci false \\' feeds/packages/lang/rust/Makefile
 
           echo "fix xray-core go version requirement"
-          printf "\ndefine Build/Prepare\n\t\$(call Build/Prepare/Default)\n\t\$(SED) 's/go 1.25.*/go 1.24/g' \$(PKG_BUILD_DIR)/go.mod\n\t\$(SED) '/toolchain/d' \$(PKG_BUILD_DIR)/go.mod\nendef\n" >> feeds/passwall_packages/xray-core/Makefile
+          makefile="feeds/passwall_packages/xray-core/Makefile"
+          sed -i '/define Build\/Prepare/,/endef/d' "$makefile"
+          printf "\ndefine Build/Prepare\n\t\$(call Build/Prepare/Default)\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec chmod u+w {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec sed -i 's/go 1.25.*/go 1.24/g' {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec sed -i '/toolchain/d' {} \;\nendef\n" >> "$makefile"
           
           echo "Patch application completed"
           #--------------------------------------end_patches--------------------------------------------
