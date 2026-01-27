@@ -437,7 +437,7 @@ jobs:
 
           echo "fix xray-core go version requirement"
           sed -i '/define Build\/Prepare/a \\t$(SED) "s/go 1.25.*/go 1.24/g" $(PKG_BUILD_DIR)/go.mod || true' feeds/passwall_packages/xray-core/Makefile
-          
+          sed -i '/define Build\/Compile/a \\t$(SED) "s/go 1.25.*/go 1.24/g" $(PKG_BUILD_DIR)/go.mod && $(SED) "/toolchain/d" $(PKG_BUILD_DIR)/go.mod || true' feeds/passwall_packages/xray-core/Makefile
           echo "Patch application completed"
           #--------------------------------------end_patches--------------------------------------------
 
