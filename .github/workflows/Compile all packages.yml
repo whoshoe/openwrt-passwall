@@ -2,7 +2,7 @@
 # Copyright (c) 2022-2025 SMALLPROGRAM <https://github.com/smallprogram>
 # Description: Auto compile
 #
-name: "Auto compile with openwrt sdk"
+name: "Compile all packages"
 on:
   repository_dispatch:
   workflow_dispatch:
