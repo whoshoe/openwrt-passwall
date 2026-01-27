@@ -438,7 +438,10 @@ jobs:
           echo "fix xray-core go version requirement"
           makefile="feeds/passwall_packages/xray-core/Makefile"
           sed -i '/define Build\/Prepare/,/endef/d' "$makefile"
-          printf "\ndefine Build/Prepare\n\t\$(call Build/Prepare/Default)\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec chmod u+w {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec sed -i 's/go 1.25.*/go 1.24/g' {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec sed -i '/toolchain/d' {} \;\nendef\n" >> "$makefile"
+          sed -i '/define Build\/Configure/,/endef/d' "$makefile"
+          printf "\ndefine Build/Configure\n\t\$(call Build/Configure/Default)\n\t@echo '--- DEBUG START: Patching go.mod ---'\n\tfind \$(PKG_BUILD_DIR) -name go.mod -print -exec sed -i 's/go 1.25.*/go 1.24/g' {} \;\n\tfind \$(PKG_BUILD_DIR) -name go.mod -print -exec sed -i '/toolchain/d' {} \;\n\t@echo '--- DEBUG END: Checking go.mod content ---'\n\tfind \$(PKG_BUILD_DIR) -name go.mod -exec cat {} \;\nendef\n" >> "$makefile"
+          echo "Dumping modified Makefile footer for verification:"
+          tail -n 10 "$makefile"
           
           echo "Patch application completed"
           #--------------------------------------end_patches--------------------------------------------
