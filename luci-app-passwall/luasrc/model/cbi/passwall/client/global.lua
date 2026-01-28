@@ -114,27 +114,32 @@ o.group = {""}
 ---- UDP Node
 o = s:taboption("Main", ListValue, "other_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
 o.template = appname .. "/cbi/nodes_listvalue"
-o:value("", translate("Close"))
+o:value("close", translate("Close"))
 o:value("tcp", translate("Same as the tcp node"))
 o.group = {"",""}
 o:depends("_node_sel_other", "1")
 o.cfgvalue = function(self, section)
-	return m:get(section, "udp_node")
+	local v = m:get(section, "udp_node") or ""
+	if v == "" then v = "close" end
+	return v
 end
 o.write = function(self, section, value)
+	if value == "close" then value = "" end
 	return m:set(section, "udp_node", value)
 end
 
 o = s:taboption("Main", ListValue, "shunt_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
-o:value("", translate("Close"))
+o:value("close", translate("Close"))
 o:value("tcp", translate("Same as the tcp node"))
 o:depends("_node_sel_shunt", "1")
 o.cfgvalue = function(self, section)
-	local udp = m:get(section, "udp_node")
-	if udp and udp ~= "tcp" then return "" end
-	return udp
+	local v = m:get(section, "udp_node") or ""
+	if v == "" then v = "close" end
+	if v ~= "close" and v ~= "tcp" then v = "tcp" end
+	return v
 end
 o.write = function(self, section, value)
+	if value == "close" then value = "" end
 	return m:set(section, "udp_node", value)
 end
 
