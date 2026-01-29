@@ -112,20 +112,17 @@ o:value("", translate("Close"))
 o.group = {""}
 
 ---- UDP Node
-o = s:taboption("Main", ListValue, "other_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
+o = s:taboption("Main", ListValue, "udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
 o.template = appname .. "/cbi/nodes_listvalue"
-o:value("close", translate("Close"))
+o:value("", translate("Close"))
 o:value("tcp", translate("Same as the tcp node"))
 o.group = {"",""}
 o:depends("_node_sel_other", "1")
-o.cfgvalue = function(self, section)
-	local v = m:get(section, "udp_node") or ""
-	if v == "" then v = "close" end
-	return v
-end
-o.write = function(self, section, value)
-	if value == "close" then value = "" end
-	return m:set(section, "udp_node", value)
+o.remove = function(self, section)
+	local v = s.fields["shunt_udp_node"]:formvalue(section)
+	if not f then
+		return m:del(section, self.option)
+	end
 end
 
 o = s:taboption("Main", ListValue, "shunt_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
@@ -741,7 +738,7 @@ if has_singbox or has_xray then
 end
 
 local tcp = s.fields["tcp_node"]
-local udp = s.fields["other_udp_node"]
+local udp = s.fields["udp_node"]
 local socks = s2.fields["node"]
 for k, v in pairs(socks_list) do
 	tcp:value(v.id, v["remark"])

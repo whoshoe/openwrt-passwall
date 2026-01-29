@@ -219,21 +219,18 @@ o.template = "passwall/cbi/hidevalue"
 o.value = "1"
 o:depends({ tcp_node = "",  ['!reverse'] = true })
 
-o = s:option(ListValue, "other_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
-o.default = "close"
-o:value("close", translate("Close"))
+o = s:option(ListValue, "udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
+o.default = ""
+o:value("", translate("Close"))
 o:value("tcp", translate("Same as the tcp node"))
 o:depends({ _tcp_node_bool = "1", _node_sel_other = "1" })
 o.template = appname .. "/cbi/nodes_listvalue"
 o.group = {"",""}
-o.cfgvalue = function(self, section)
-	local v = m:get(section, "udp_node") or ""
-	if v == "" then v = "close" end
-	return v
-end
-o.write = function(self, section, value)
-	if value == "close" then value = "" end
-	return m:set(section, "udp_node", value)
+o.remove = function(self, section)
+	local v = s.fields["shunt_udp_node"]:formvalue(section)
+	if not f then
+		return m:del(section, self.option)
+	end
 end
 
 o = s:option(ListValue, "shunt_udp_node", "<a style='color: red'>" .. translate("UDP Node") .. "</a>")
@@ -254,8 +251,8 @@ end
 o = s:option(DummyValue, "_udp_node_bool", "")
 o.template = "passwall/cbi/hidevalue"
 o.value = "1"
-o:depends({ _tcp_node_bool = "1", other_udp_node = "tcp" })
-o:depends({ _tcp_node_bool = "1", shunt_udp_node = "tcp" })
+o:depends({ udp_node = "",  ['!reverse'] = true })
+o:depends({ shunt_udp_node = "tcp" })
 
 ---- TCP Proxy Drop Ports
 local TCP_PROXY_DROP_PORTS = m:get("@global_forwarding[0]", "tcp_proxy_drop_ports")
@@ -532,14 +529,12 @@ o.description = desc .. "</ul>"
 o:depends({dns_shunt = "dnsmasq", tcp_proxy_mode = "proxy", chn_list = "direct"})
 
 local tcp = s.fields["tcp_node"]
-local udp = s.fields["other_udp_node"]
-local udp_bool = s.fields["_udp_node_bool"]
+local udp = s.fields["udp_node"]
 for k, v in pairs(socks_list) do
 	tcp:value(v.id, v["remark"])
 	tcp.group[#tcp.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
 	udp:value(v.id, v["remark"])
 	udp.group[#udp.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
-	udp_bool:depends({ _tcp_node_bool = "1", other_udp_node = v.id })
 end
 for k, v in pairs(nodes_table) do
 	if #normal_list == 0 then
@@ -571,7 +566,6 @@ for k, v in pairs(nodes_table) do
 		udp:value(v.id, v["remark"])
 		udp.group[#udp.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
 	end
-	udp_bool:depends({ _tcp_node_bool = "1", other_udp_node = v.id })
 end
 
 return m

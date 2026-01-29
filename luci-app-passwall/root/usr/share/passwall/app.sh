@@ -1772,6 +1772,12 @@ acl_app() {
 				fi
 			}
 			[ -n "$udp_node" ] && {
+				[ -n "$tcp_node" ] && {
+					local protocol=$(config_n_get $tcp_node protocol)
+					[ "$protocol" = "_shunt" ] && [ "$udp_node" != "default" ] && {
+						udp_node = "tcp"
+					}
+				}
 				if [ "$udp_node" = "default" ]; then
 					local GLOBAL_UDP_NODE=$(get_cache_var "ACL_GLOBAL_UDP_node")
 					[ -n "${GLOBAL_UDP_NODE}" ] && GLOBAL_UDP_redir_port=$(get_cache_var "ACL_GLOBAL_UDP_redir_port")
@@ -1938,6 +1944,13 @@ get_config() {
 	elif [ "$UDP_NODE" = "$TCP_NODE" ]; then
 		TCP_UDP=1
 	fi
+	[ -n "$TCP_NODE" ] && {
+		local protocol=$(config_n_get $TCP_NODE protocol)
+		[ "$protocol" = "_shunt" ] && [ -n "$UDP_NODE" ] && {
+			UDP_NODE=$TCP_NODE
+			TCP_UDP=1
+		}
+	}
 	[ "$ENABLED" = 1 ] && {
 		local _node
 		for _node in "$TCP_NODE" "$UDP_NODE"; do
