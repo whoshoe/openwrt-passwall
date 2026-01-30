@@ -33,6 +33,7 @@ local asset_location = uci:get(name, "@global_rules[0]", "v2ray_location_asset")
 local geo2rule = uci:get(name, "@global_rules[0]", "geo2rule") or "0"
 local geoip_update_ok, geosite_update_ok = false, false
 asset_location = asset_location:match("/$") and asset_location or (asset_location .. "/")
+local backup_path = "/tmp/bak_v2ray/"
 
 if arg3 == "cron" then
 	arg2 = nil
@@ -565,7 +566,8 @@ local function fetch_geofile(geo_name, geo_type, url)
 	if sret_tmp == 200 then
 		if sha_verify then
 			if verify_sha256(sha_path) then
-				sys.call(string.format("mkdir -p %s && cp -f %s %s", asset_location, tmp_path, asset_path))
+				sys.call(string.format("mkdir -p %s && mv -f %s %s", backup_path, asset_path, backup_path))
+				sys.call(string.format("mkdir -p %s && mv -f %s %s", asset_location, tmp_path, asset_path))
 				reboot = 1
 				log(geo_type .. " 更新成功。")
 				if geo_type == "geoip" then
@@ -582,7 +584,8 @@ local function fetch_geofile(geo_name, geo_type, url)
 				log(geo_type .. " 版本一致，无需更新。")
 				return 0
 			end
-			sys.call(string.format("mkdir -p %s && cp -f %s %s", asset_location, tmp_path, asset_path))
+			sys.call(string.format("mkdir -p %s && mv -f %s %s", backup_path, asset_path, backup_path))
+			sys.call(string.format("mkdir -p %s && mv -f %s %s", asset_location, tmp_path, asset_path))
 			reboot = 1
 			log(geo_type .. " 更新成功。")
 			if geo_type == "geoip" then
