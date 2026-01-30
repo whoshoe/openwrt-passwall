@@ -113,7 +113,7 @@ if #nodes_table > 0 then
 
 	o = s:option(Flag, "preproxy_enabled", translate("Preproxy"))
 
-	o = s:option(ListValue, "main_node", string.format('<a style="color:#FF8C00">%s</a>', translate("Preproxy Node")), translate("Set the node to be used as a pre-proxy. Each rule (including <code>Default</code>) has a separate switch that controls whether this rule uses the pre-proxy or not."))
+	o = s:option(ListValue, "main_node", translate("Preproxy Node"), translate("Set the node to be used as a pre-proxy. Each rule (including <code>Default</code>) has a separate switch that controls whether this rule uses the pre-proxy or not."))
 	o:depends({ ["preproxy_enabled"] = true })
 	o.template = appname .. "/cbi/nodes_listvalue"
 	o.group = {}
@@ -138,7 +138,9 @@ if #nodes_table > 0 then
 		o.group[#o.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
 	end
 
-	o = s:option(Flag, "fakedns", "FakeDNS", translate("Use FakeDNS work in the shunt domain that proxy."))
+	o = s:option(Flag, "fakedns", '<a style="color:#FF8C00">FakeDNS</a>', translate("Use FakeDNS work in the domain that proxy.") .. "<br>" ..
+					translate("Suitable scenarios for let the node servers get the target domain names.") .. "<br>" ..
+					translate("Such as: DNS unlocking of streaming media, reducing DNS query latency, etc."))
 end
 m.uci:foreach(appname, "shunt_rules", function(e)
 	if e[".name"] and e.remarks then
@@ -151,7 +153,7 @@ m.uci:foreach(appname, "shunt_rules", function(e)
 		o.group = {"","","",""}
 
 		if #nodes_table > 0 then
-			local pt = s:option(ListValue, e[".name"] .. "_proxy_tag", string.format('* <a style="color:#FF8C00">%s</a>', e.remarks .. " " .. translate("Preproxy")))
+			local pt = s:option(ListValue, e[".name"] .. "_proxy_tag", e.remarks .. " " .. translate("Preproxy"))
 			pt:value("", translate("Close (Not use)"))
 			pt:value("main", translate("Use preproxy node"))
 			pt:depends("__hide__", "1")
@@ -222,7 +224,7 @@ if #nodes_table > 0 then
 		o:value(v.id, v.remark)
 		o.group[#o.group+1] = (v.group and v.group ~= "") and v.group or translate("default")
 	end
-	local dpt = s:option(ListValue, "default_proxy_tag", string.format('* <a style="color:red">%s</a>', translate("Default Preproxy")), translate("When using, localhost will connect this node first and then use this node to connect the default node."))
+	local dpt = s:option(ListValue, "default_proxy_tag", translate("Default Preproxy"), translate("When using, localhost will connect this node first and then use this node to connect the default node."))
 	dpt:value("", translate("Close (Not use)"))
 	dpt:value("main", translate("Use preproxy node"))
 	dpt:depends("__hide__", "1")

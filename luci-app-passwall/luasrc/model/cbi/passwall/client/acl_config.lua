@@ -497,7 +497,7 @@ o:depends({dns_mode = "sing-box"})
 o:depends({dns_mode = "xray"})
 o:depends({_node_sel_shunt = "1"})
 
-o = s:option(Flag, "remote_fakedns", "FakeDNS", translate("Use FakeDNS work in the shunt domain that proxy."))
+o = s:option(Flag, "remote_fakedns", "FakeDNS", translate("Use FakeDNS work in the domain that proxy."))
 o.default = "0"
 o.rmempty = false
 o:depends({dns_mode = "sing-box"})
