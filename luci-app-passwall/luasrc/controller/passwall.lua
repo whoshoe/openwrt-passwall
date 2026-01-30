@@ -726,14 +726,19 @@ end
 
 function rollback_rules()
 	local arg_type = http.formvalue("type")
+	local rules = http.formvalue("rules") or ""
 	if arg_type ~= "geoip" and arg_type ~= "geosite" then
 		http_write_json_error()
 		return
 	end
 	local bak_dir = "/tmp/bak_v2ray/"
 	local geo_dir = (uci:get(appname, "@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/")
+	local geo2rule = uci:get(appname, "@global_rules[0]", "geo2rule") or "0"
 	fs.move(bak_dir .. arg_type .. ".dat", geo_dir .. arg_type .. ".dat")
 	fs.rmdir(bak_dir)
+	if geo2rule == "1" and rules ~= "" then
+		luci.sys.call("lua /usr/share/passwall/rule_update.lua log '" .. rules .. "' rollback > /dev/null")
+	end
 	http_write_json_ok()
 end
 
