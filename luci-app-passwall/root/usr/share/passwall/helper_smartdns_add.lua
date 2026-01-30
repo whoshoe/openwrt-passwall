@@ -43,7 +43,7 @@ local USE_GEOVIEW = uci:get(appname, "@global_rules[0]", "enable_geoview")
 local IS_SHUNT_NODE = uci:get(appname, TCP_NODE, "protocol") == "_shunt"
 
 if IS_SHUNT_NODE then
-	REMOTE_FAKEDNS = uci:get(appname, TCP_NODE, "fakedns")
+	REMOTE_FAKEDNS = uci:get(appname, TCP_NODE, "fakedns") or "0"
 end
 
 local function log(...)
@@ -234,7 +234,7 @@ if DNS_MODE == "socks" then
 		end
 		table.insert(config_lines, server_param)
 	end
-	if not IS_SHUNT_NODE then REMOTE_FAKEDNS = 0 end
+	if not IS_SHUNT_NODE then REMOTE_FAKEDNS = "0" end
 else
 	local server_param = string.format("server %s -group %s -exclude-default-group", TUN_DNS:gsub("#", ":"), REMOTE_GROUP)
 	table.insert(config_lines, server_param)

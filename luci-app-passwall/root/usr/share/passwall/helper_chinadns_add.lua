@@ -36,7 +36,7 @@ local USE_GEOVIEW = uci:get(appname, "@global_rules[0]", "enable_geoview")
 local IS_SHUNT_NODE = uci:get(appname, TCP_NODE, "protocol") == "_shunt"
 
 if IS_SHUNT_NODE then
-	REMOTE_FAKEDNS = uci:get(appname, TCP_NODE, "fakedns")
+	REMOTE_FAKEDNS = uci:get(appname, TCP_NODE, "fakedns") or "0"
 end
 
 local function log(...)
