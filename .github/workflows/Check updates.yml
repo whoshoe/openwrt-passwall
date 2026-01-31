@@ -1,0 +1,59 @@
+name: Nightly Upstream Sync
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Runs at 2:00 AM UTC every day
+  workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+jobs:
+  sync-and-rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important: Fetch full history for rebase to work
+          token: ${{ secrets.PAT_TOKEN }} # MUST use PAT to trigger the next workflow!
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Add Upstream Remote
+        run: |
+          # Replace with the actual upstream URL
+          git remote add upstream https://github.com/Openwrt-Passwall/openwrt-passwall.git
+          git fetch upstream
+
+      - name: Sync and Rebase
+        run: |
+          # Ensure we are on the main branch
+          git checkout main
+
+          # Try to rebase your changes ON TOP of upstream/main
+          # This keeps your 2 action files as the most recent commits
+          if git rebase upstream/main; then
+            echo "Rebase successful."
+          else
+            echo "Rebase failed (conflict). Aborting to protect code."
+            git rebase --abort
+            exit 1
+          fi
+
+      - name: Check for Changes
+        id: check_changes
+        run: |
+          # Check if the local branch is ahead of the remote origin (meaning we have new upstream code)
+          if [ $(git rev-parse HEAD) != $(git rev-parse origin/main) ]; then
+            echo "changes_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes_exist=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push Changes
+        if: steps.check_changes.outputs.changes_exist == 'true'
+        run: |
+          # Force push is required because rebase rewrites history
+          # --force-with-lease is safer as it checks no one else pushed in the meantime
+          git push --force-with-lease origin main
