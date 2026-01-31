@@ -46,19 +46,25 @@ jobs:
           echo "Makefile Version: $MAKEFILE_VER"
 
           # 2. Get the latest Release Tag from YOUR repository via API
-          # We use API because git tags might not be fetched fully or we want the "Released" status
           LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
             | jq -r .tag_name)
           
-          echo "Latest Release: $LATEST_RELEASE"
+          echo "Latest Release Tag: $LATEST_RELEASE"
 
-          # 3. Compare
-          if [ "$LATEST_RELEASE" != "$MAKEFILE_VER" ] && [ "$LATEST_RELEASE" != "v$MAKEFILE_VER" ]; then
+          # 3. Normalize versions for comparison
+          # Strip leading 'v' (if present) and strip everything after a hyphen '-' (to ignore release suffixes like -1)
+          NORM_MAKEFILE=$(echo "$MAKEFILE_VER" | sed -E 's/^v//' | sed -E 's/-.*//')
+          NORM_RELEASE=$(echo "$LATEST_RELEASE" | sed -E 's/^v//' | sed -E 's/-.*//')
+
+          echo "Comparing Normalized: '$NORM_RELEASE' vs '$NORM_MAKEFILE'"
+
+          # 4. Compare
+          if [ "$NORM_RELEASE" != "$NORM_MAKEFILE" ]; then
             echo "New version detected ($MAKEFILE_VER). Syncing code and triggering build..."
             echo "has_update=true" >> $GITHUB_OUTPUT
           else
-            echo "Versions match. Syncing code only (no build trigger)."
+            echo "Versions match (Base version: $NORM_MAKEFILE). Syncing code only (no build trigger)."
             echo "has_update=false" >> $GITHUB_OUTPUT
           fi
 
