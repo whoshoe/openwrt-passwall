@@ -94,9 +94,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
+          # - platform: x86_64
+            # url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            # ver: "ipk"
 
           - platform: x86_64
             url_sdk: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
@@ -209,9 +209,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
+          # - platform: x86_64
+            # url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            # ver: "ipk"
 
         #   - platform: aarch64_generic
         #     url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/rockchip/armv8/openwrt-sdk-24.10.4-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst
@@ -558,4 +558,5 @@ jobs:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
           body_path: ${{ env.FIRMWARE }}/release.txt
           files: ${{ env.FIRMWARE }}/upload/*
+
 
