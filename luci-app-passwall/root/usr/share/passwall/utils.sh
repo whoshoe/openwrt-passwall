@@ -15,6 +15,8 @@ TMP_ROUTE_PATH=${TMP_PATH}/route
 TMP_SCRIPT_FUNC_PATH=${TMP_PATH}/script_func
 RULES_PATH=/usr/share/${CONFIG}/rules
 
+. /lib/functions/network.sh
+
 echolog() {
 	local d="$(date "+%Y-%m-%d %H:%M:%S")"
 	echo -e "$d: $*" >>$LOG_FILE
@@ -355,7 +357,6 @@ add_ip2route() {
 	local remarks="${1}"
 	[ "$remarks" != "$ip" ] && remarks="${1}(${ip})"
 
-	. /lib/functions/network.sh
 	local gateway device
 	network_get_gateway gateway "$2"
 	network_get_device device "$2"
