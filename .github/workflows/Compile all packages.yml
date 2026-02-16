@@ -15,8 +15,8 @@ env:
   TZ: Asia/Shanghai
   passwall: ${{ github.repository }}
   packages: Openwrt-Passwall/openwrt-passwall-packages
-  package_names: "chinadns-ng dns2socks geoview microsocks tcping v2ray-geodata xray-core xray-plugin"
-  package_release: "chinadns-ng dns2socks geoview microsocks tcping v2ray-geoip v2ray-geosite xray-core xray-plugin"
+  package_names: "chinadns-ng dns2socks geoview microsocks tcping v2ray-geodata xray-core"
+  package_release: "chinadns-ng dns2socks geoview microsocks tcping v2ray-geoip v2ray-geosite xray-core"
 
 permissions:
   contents: write
@@ -558,6 +558,7 @@ jobs:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
           body_path: ${{ env.FIRMWARE }}/release.txt
           files: ${{ env.FIRMWARE }}/upload/*
+
 
 
 
