@@ -1,0 +1,83 @@
+name: Nightly Upstream Sync
+
+on:
+  schedule:
+    - cron: '0 16 * * *' # 2 AM UTC
+  workflow_dispatch:
+
+jobs:
+  sync-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Add Upstream Remote
+        run: |
+          # Replace with the actual upstream URL
+          git remote add upstream https://github.com/Openwrt-Passwall/openwrt-passwall.git
+          git fetch upstream
+
+      - name: Sync and Rebase
+        run: |
+          git checkout main
+          # Rebase your custom commits on top of upstream
+          if git rebase upstream/main; then
+            echo "Rebase successful."
+          else
+            echo "Rebase failed (conflict). Aborting."
+            git rebase --abort
+            exit 1
+          fi
+
+      - name: Check Version Change
+        id: check_version
+        run: |
+          # 1. Get the version from the Makefile (currently on disk after rebase)
+          MAKEFILE_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' luci-app-passwall/Makefile | tr -d '[:space:]')
+          echo "Makefile Version: $MAKEFILE_VER"
+
+          # 2. Get the latest Release Tag from YOUR repository via API
+          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
+            | jq -r .tag_name)
+          
+          echo "Latest Release Tag: $LATEST_RELEASE"
+
+          # 3. Normalize versions for comparison
+          # Strip leading 'v' (if present) and strip everything after a hyphen '-' (to ignore release suffixes like -1)
+          NORM_MAKEFILE=$(echo "$MAKEFILE_VER" | sed -E 's/^v//' | sed -E 's/-.*//')
+          NORM_RELEASE=$(echo "$LATEST_RELEASE" | sed -E 's/^v//' | sed -E 's/-.*//')
+
+          echo "Comparing Normalized: '$NORM_RELEASE' vs '$NORM_MAKEFILE'"
+
+          # 4. Compare
+          if [ "$NORM_RELEASE" != "$NORM_MAKEFILE" ]; then
+            echo "New version detected ($MAKEFILE_VER). Syncing code and triggering build..."
+            echo "has_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "Versions match (Base version: $NORM_MAKEFILE). Syncing code only (no build trigger)."
+            echo "has_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push Code Changes
+        run: |
+          # We push the code regardless. If only the README changed upstream, we still want that sync.
+          # But we only trigger the build if the version changed.
+          git push --force-with-lease origin main
+
+      - name: Trigger Compile Pipeline
+        if: steps.check_version.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          echo "Triggering build pipeline..."
+          gh workflow run "Compile all packages.yml" --repo ${{ github.repository }} --ref main
