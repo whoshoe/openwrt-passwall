@@ -30,7 +30,7 @@ jobs:
         run: |
           git checkout main
           # Rebase your custom commits on top of upstream
-          if git rebase upstream/main; then
+          if git rebase -Xours upstream/main; then
             echo "Rebase successful."
           else
             echo "Rebase failed (conflict). Aborting."
