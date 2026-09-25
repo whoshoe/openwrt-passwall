@@ -1468,8 +1468,8 @@ function gen_config(var)
 						inbound_tag = {}
 						if e["inbound"]:find("tproxy") then
 							if redir_port then
-								table.insert(inboundTag, "tcp_redir")
-								table.insert(inboundTag, "udp_redir")
+								table.insert(inbound_tag, "tcp_redir")
+								table.insert(inbound_tag, "udp_redir")
 							end
 						end
 						if e["inbound"]:find("socks") then
