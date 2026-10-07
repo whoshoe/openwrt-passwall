@@ -63,10 +63,9 @@ config_t_get() {
 }
 
 eval_set_val() {
-	for i in $@; do
-		for j in $i; do
-			eval $j
-		done
+	local param
+	for param in "$@"; do
+		eval "${param%%=*}=\${param#*=}"
 	done
 }
 
