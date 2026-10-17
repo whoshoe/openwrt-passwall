@@ -41,30 +41,43 @@ jobs:
       - name: Check Version Change
         id: check_version
         run: |
-          # 1. Get the version from the Makefile (currently on disk after rebase)
-          MAKEFILE_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' luci-app-passwall/Makefile | tr -d '[:space:]')
+          # 1. Get PKG_VERSION and PKG_RELEASE from the Makefile (currently on disk after rebase)
+          PKG_VER=$(awk -F ':=' '/^[[:space:]]*PKG_VERSION[[:space:]]*:=/ {print $2}' luci-app-passwall/Makefile | tr -d '[:space:]')
+          PKG_REL=$(awk -F ':=' '/^[[:space:]]*PKG_RELEASE[[:space:]]*:=/ {print $2}' luci-app-passwall/Makefile | tr -d '[:space:]')
+          # Strip legacy '$(PKG_VERSION)-' prefix if present in PKG_RELEASE
+          PKG_REL="${PKG_REL#\$(PKG_VERSION)-}"
+
+          if [ -z "$PKG_VER" ]; then
+            echo "::error::Failed to extract PKG_VERSION from luci-app-passwall/Makefile"
+            exit 1
+          fi
+
+          if [ -n "$PKG_REL" ]; then
+            MAKEFILE_VER="${PKG_VER}-${PKG_REL}"
+          else
+            MAKEFILE_VER="${PKG_VER}"
+          fi
           echo "Makefile Version: $MAKEFILE_VER"
 
           # 2. Get the latest Release Tag from YOUR repository via API
           LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-            | jq -r .tag_name)
+            | jq -r '.tag_name // empty')
           
           echo "Latest Release Tag: $LATEST_RELEASE"
 
-          # 3. Normalize versions for comparison
-          # Strip leading 'v' (if present) and strip everything after a hyphen '-' (to ignore release suffixes like -1)
-          NORM_MAKEFILE=$(echo "$MAKEFILE_VER" | sed -E 's/^v//' | sed -E 's/-.*//')
-          NORM_RELEASE=$(echo "$LATEST_RELEASE" | sed -E 's/^v//' | sed -E 's/-.*//')
+          # 3. Normalize versions for comparison (strip leading 'v' if present, keep release suffix)
+          NORM_MAKEFILE="${MAKEFILE_VER#v}"
+          NORM_RELEASE="${LATEST_RELEASE#v}"
 
           echo "Comparing Normalized: '$NORM_RELEASE' vs '$NORM_MAKEFILE'"
 
           # 4. Compare
-          if [ "$NORM_RELEASE" != "$NORM_MAKEFILE" ]; then
+          if [ -z "$NORM_RELEASE" ] || [ "$NORM_RELEASE" != "$NORM_MAKEFILE" ]; then
             echo "New version detected ($MAKEFILE_VER). Syncing code and triggering build..."
             echo "has_update=true" >> $GITHUB_OUTPUT
           else
-            echo "Versions match (Base version: $NORM_MAKEFILE). Syncing code only (no build trigger)."
+            echo "Versions match ($NORM_MAKEFILE). Syncing code only (no build trigger)."
             echo "has_update=false" >> $GITHUB_OUTPUT
           fi
 
