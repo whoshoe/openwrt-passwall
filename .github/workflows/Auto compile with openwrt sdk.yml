@@ -165,3 +165,18 @@ jobs:
         with:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
           files: ${{ github.workspace }}/upload/*
+
+  job_trigger_packages:
+    name: Trigger packages cache workflow
+    needs: [job_check, job_build_passwall]
+    if: needs.job_check.outputs.has_update == 'true' && needs.job_build_passwall.result == 'success'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Trigger Auto Cache Software Release JSONs
+        env:
+          # PAT with "Actions: write" permission on the packages repository
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+        run: |
+          gh workflow run "Auto cache software release jsons.yml" \
+            --repo "${{ env.packages }}" \
+            --ref main
